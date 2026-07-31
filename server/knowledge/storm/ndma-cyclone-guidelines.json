@@ -1,0 +1,22 @@
+{
+  "documentId": "ndma-cyclone-001",
+  "title": "NDMA Guidelines on Management of Cyclones",
+  "source": "National Disaster Management Authority, Government of India",
+  "sourceUrl": "https://ndma.gov.in/images/guidelines/Cyclones.pdf",
+  "category": "STORM",
+  "version": "1.8",
+  "lastUpdated": "2024-05-01",
+  "language": "en",
+  "sections": [
+    {
+      "sectionId": "cyclone-warning",
+      "title": "Cyclone Warning System & Preparedness",
+      "content": "India Meteorological Department issues cyclone warnings in four stages: (1) Pre-Cyclone Watch — 72 hours before expected landfall. (2) Cyclone Alert — 48 hours prior, issued to specific coastal districts. (3) Cyclone Warning — 24 hours prior, with expected wind speed and storm surge. (4) Post-Landfall Outlook — continued tracking after landfall. Preparedness includes strengthening roofs, storing water and food supplies for 72 hours, securing loose objects outdoors, identifying nearest cyclone shelter locations, and trimming tree branches that could damage structures."
+    },
+    {
+      "sectionId": "cyclone-response",
+      "title": "Cyclone Emergency Response Protocol",
+      "content": "During cyclone: (1) Move to designated cyclone shelters or pucca buildings. (2) Stay indoors away from windows. (3) If the eye of the cyclone passes over, remain sheltered — the storm will resume from the opposite direction. (4) Disconnect electrical appliances. (5) Keep battery-powered radio for weather updates. (6) After the cyclone, stay away from downed power lines, damaged buildings, and floodwaters. (7) NDRF deploys pre-positioned teams with inflatable boats, tree cutters, and communication equipment for rescue and relief operations in the affected coastal zones."
+    }
+  ]
+}

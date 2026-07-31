@@ -1,0 +1,27 @@
+{
+  "documentId": "who-first-aid-001",
+  "title": "WHO Guidelines on Basic First Aid in Emergency Settings",
+  "source": "World Health Organization",
+  "sourceUrl": "https://www.who.int/publications/i/item/9789241548625",
+  "category": "MEDICAL",
+  "version": "3.0",
+  "lastUpdated": "2024-02-20",
+  "language": "en",
+  "sections": [
+    {
+      "sectionId": "first-aid-triage",
+      "title": "Mass Casualty Triage Principles",
+      "content": "In mass casualty incidents, use START (Simple Triage and Rapid Treatment) triage: (1) Walking wounded are GREEN (minor) — direct to treatment area. (2) Check breathing: if not breathing after repositioning airway, tag BLACK (deceased). (3) If breathing rate is over 30/minute, tag RED (immediate). (4) Check perfusion using capillary refill: if over 2 seconds, tag RED (immediate). (5) Check mental status: if patient cannot follow simple commands, tag RED (immediate). (6) Otherwise, tag YELLOW (delayed). Triage tags should be clearly visible and include patient number, time, vital signs, and treatments given."
+    },
+    {
+      "sectionId": "first-aid-bleeding",
+      "title": "Controlling Severe Bleeding",
+      "content": "To control severe bleeding: (1) Apply direct pressure to the wound using a clean cloth or bandage. (2) If blood soaks through, add more cloth on top — do not remove the original dressing. (3) Elevate the injured limb above heart level if possible. (4) For life-threatening limb bleeding uncontrolled by direct pressure, apply a tourniquet 5-7 cm above the wound. (5) Note the time of tourniquet application. (6) Keep the patient warm and lying down to prevent shock. (7) Seek immediate medical help. (8) Monitor vital signs continuously until emergency medical services arrive."
+    },
+    {
+      "sectionId": "first-aid-drowning",
+      "title": "Drowning Rescue and Resuscitation",
+      "content": "For drowning victims: (1) Ensure your own safety before attempting rescue — use reach, throw, row, go method. (2) Remove the person from water and place on a firm, flat surface. (3) Check for responsiveness and breathing. (4) If not breathing, begin CPR immediately: 30 chest compressions followed by 2 rescue breaths. (5) Continue CPR until emergency medical services arrive or the person starts breathing. (6) If the person vomits, turn them on their side to prevent choking. (7) Remove wet clothing and cover with dry blankets to prevent hypothermia. (8) All drowning victims should be evaluated at a hospital even if they appear to recover."
+    }
+  ]
+}

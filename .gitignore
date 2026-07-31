@@ -1,0 +1,56 @@
+# RESONIX AI — Production Root .gitignore
+
+# Dependencies
+node_modules/
+
+# Build & Dist Outputs
+dist/
+build/
+coverage/
+.vite/
+.cache/
+
+# Environment Variables & Secrets
+.env
+.env.*
+!.env.example
+
+# Logs & Debug Output
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# IDE & Editor Settings
+.vscode/
+.idea/
+*.iml
+
+# Android Native Build Files
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+
+# SQLite & Persistent Local Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads & Temporary Directories
+uploads/
+temp/
+tmp/
+
+# Generated AI Cache & Embeddings
+*.onnx.cache
+*.tensor
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Git Merge & Rebase Artifacts
+*.orig

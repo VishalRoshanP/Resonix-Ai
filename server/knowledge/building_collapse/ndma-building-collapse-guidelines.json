@@ -1,0 +1,22 @@
+{
+  "documentId": "ndma-building-collapse-001",
+  "title": "NDMA Guidelines on Building Collapse Emergency Response",
+  "source": "National Disaster Management Authority, Government of India",
+  "sourceUrl": "https://ndma.gov.in/images/guidelines/management-of-building-collapse.pdf",
+  "category": "BUILDING_COLLAPSE",
+  "version": "1.3",
+  "lastUpdated": "2023-09-15",
+  "language": "en",
+  "sections": [
+    {
+      "sectionId": "collapse-rescue",
+      "title": "Structural Collapse Search and Rescue",
+      "content": "For building collapse rescue: (1) Establish a safety perimeter around the collapse zone. (2) Shut off gas and electricity supply to the area. (3) Conduct rapid visual assessment and listen for survivors. (4) Use trained search dogs and electronic listening devices to locate trapped persons. (5) Begin rescue from the edges of the debris pile, working inward. (6) Use cribbing and shoring techniques to stabilize debris before removing it. (7) Protect survivors from secondary collapse using temporary supports. (8) Deploy heavy equipment only after confirming no survivors are in the immediate removal area. (9) Maintain continuous communication with trapped survivors to monitor their condition."
+    },
+    {
+      "sectionId": "collapse-triage",
+      "title": "Collapse Victim Medical Triage",
+      "content": "Medical considerations for collapse victims: (1) Crush syndrome is a major risk for persons trapped under heavy debris for extended periods. (2) Before extracting a crush victim, establish IV fluids if possible. (3) Monitor for hyperkalemia and renal failure following extraction. (4) Treat for hypothermia as trapped victims lose body heat rapidly. (5) Immobilize all suspected spinal injuries. (6) Apply tourniquets for uncontrollable limb bleeding during extraction. (7) Transport critical patients to trauma centers with surgical capability."
+    }
+  ]
+}

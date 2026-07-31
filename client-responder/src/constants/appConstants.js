@@ -1,0 +1,26 @@
+export const EMERGENCY_SEVERITY = {
+  CRITICAL: 'CRITICAL',
+  HIGH: 'HIGH',
+  MEDIUM: 'MEDIUM',
+  LOW: 'LOW',
+};
+
+export const INCIDENT_STATUS = {
+  REPORTED: 'REPORTED',
+  TRIAGED: 'TRIAGED',
+  DISPATCHED: 'DISPATCHED',
+  ON_SCENE: 'ON_SCENE',
+  RESOLVED: 'RESOLVED',
+};
+
+export const RESPONDER_ROLES = {
+  RESPONDER: 'Responder',
+  COORDINATOR: 'Coordinator',
+  ADMINISTRATOR: 'Administrator',
+};
+
+export const MESH_SYNC_MODE = {
+  ONLINE: 'ONLINE',
+  OFFLINE: 'OFFLINE',
+  BLE_RELAY: 'BLE_RELAY',
+};

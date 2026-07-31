@@ -1,0 +1,27 @@
+{
+  "documentId": "ndrf-sop-001",
+  "title": "NDRF Standard Operating Procedures for Disaster Response",
+  "source": "National Disaster Response Force, Ministry of Home Affairs, India",
+  "sourceUrl": "https://www.ndrf.gov.in/sops",
+  "category": "GENERAL",
+  "version": "2.5",
+  "lastUpdated": "2024-06-01",
+  "language": "en",
+  "sections": [
+    {
+      "sectionId": "ndrf-deployment",
+      "title": "NDRF Pre-Positioning and Deployment Protocol",
+      "content": "NDRF battalions are pre-positioned based on vulnerability assessment: (1) Each NDRF battalion comprises 1,149 personnel organized into specialist teams. (2) Teams include medical first responders, engineers, dog squads, and deep divers. (3) Pre-positioning occurs 24-48 hours before anticipated disaster based on IMD advisories. (4) Each team carries self-contained equipment including inflatable boats, chainsaws, hydraulic cutters, pneumatic tools, and communication equipment. (5) State authorities requisition NDRF through the National Emergency Response Centre. (6) Teams maintain 2-hour mobilization readiness at all times."
+    },
+    {
+      "sectionId": "ndrf-search-rescue",
+      "title": "NDRF Search and Rescue Operations",
+      "content": "Search and rescue operations follow standardized protocols: (1) Establish Incident Command System with clearly defined roles. (2) Conduct primary search for surface victims and walking wounded. (3) Use specialized equipment for confined space rescue: seismic listening devices, fiber optic cameras, concrete cutters. (4) Deploy canine search teams for locating trapped survivors. (5) Establish medical triage at rescue site. (6) Maintain detailed records of all rescued, injured, and deceased persons. (7) Coordinate with local hospitals for patient transfer. (8) Establish communication with affected families through information centers."
+    },
+    {
+      "sectionId": "ndrf-evacuation",
+      "title": "Evacuation Planning and Execution",
+      "content": "Evacuation procedures: (1) Identify evacuation routes and alternate routes in advance. (2) Designate assembly points and relief camp locations. (3) Prioritize evacuation of vulnerable populations: elderly, children, disabled, pregnant women. (4) Use boats, helicopters, and military vehicles for evacuation from inundated areas. (5) Maintain evacuation roster with names, ID numbers, and destination. (6) Ensure relief camps have adequate water supply (minimum 15 liters per person per day), food, sanitation, and medical facilities. (7) Register all evacuees and maintain family reunification records."
+    }
+  ]
+}

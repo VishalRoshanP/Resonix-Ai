@@ -1,0 +1,30 @@
+{
+  "name": "resonix-ai-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RESONIX AI Dual-Frontend Monorepo Architecture powered by Gemma 4",
+  "scripts": {
+    "dev": "npm run dev:citizen",
+    "dev:server": "npm run dev --prefix server",
+    "dev:citizen": "npm run dev --prefix client-citizen",
+    "dev:responder": "npm run dev --prefix client-responder",
+    "server": "npm run dev --prefix server",
+    "citizen": "npm run dev --prefix client-citizen",
+    "responder": "npm run dev --prefix client-responder",
+    "start": "npm run start --prefix server",
+    "build": "npm run build:citizen && npm run build:responder",
+    "build:citizen": "npm run build --prefix client-citizen",
+    "build:responder": "npm run build --prefix client-responder",
+    "build:all": "npm run build:citizen && npm run build:responder",
+    "install:all": "npm install --prefix client-citizen && npm install --prefix client-responder && npm install --prefix server"
+  },
+  "keywords": [
+    "resonix-ai",
+    "gemma-4",
+    "mern",
+    "monorepo",
+    "disaster-intelligence"
+  ],
+  "author": "RESONIX AI Team",
+  "license": "ISC"
+}

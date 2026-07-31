@@ -1,0 +1,27 @@
+{
+  "documentId": "ndma-flood-001",
+  "title": "NDMA Guidelines on Management of Floods",
+  "source": "National Disaster Management Authority, Government of India",
+  "sourceUrl": "https://ndma.gov.in/images/guidelines/Flood.pdf",
+  "category": "FLOOD",
+  "version": "2.0",
+  "lastUpdated": "2024-01-15",
+  "language": "en",
+  "sections": [
+    {
+      "sectionId": "flood-preparedness",
+      "title": "Flood Preparedness Measures",
+      "content": "Flood preparedness involves early warning systems, community awareness programs, and pre-positioning of relief materials. Key measures include: (1) Establishing flood forecasting and warning systems through the Central Water Commission. (2) Preparing flood plain zoning maps to identify vulnerable areas. (3) Building raised platforms and flood shelters in flood-prone areas. (4) Stocking essential relief materials including food, drinking water, medicines, and rescue equipment. (5) Training community volunteers in search and rescue operations. (6) Ensuring availability of boats and life jackets in vulnerable zones."
+    },
+    {
+      "sectionId": "flood-response",
+      "title": "Flood Emergency Response Protocol",
+      "content": "During a flood emergency: (1) Activate District and State Emergency Operations Centers. (2) Issue evacuation orders for low-lying and flood-prone areas. (3) Deploy NDRF and SDRF teams for search and rescue operations. (4) Establish relief camps with adequate provisions for food, water, sanitation, and medical care. (5) Coordinate with Indian Army, Navy, and Air Force for aerial rescue operations when required. (6) Set up communication networks using satellite phones and ham radios. (7) Ensure continuous monitoring of river gauge levels and dam discharge data. (8) Provide medical teams at relief camps for treating waterborne diseases."
+    },
+    {
+      "sectionId": "flood-citizen-safety",
+      "title": "Citizen Safety Instructions During Floods",
+      "content": "Citizens should: (1) Move to higher ground immediately when flood warnings are issued. (2) Avoid walking or driving through floodwaters — six inches of moving water can knock you down. (3) Stay away from power lines and electrical wires during flooding. (4) Store drinking water in clean containers as water supply may become contaminated. (5) Keep important documents in waterproof bags. (6) Follow instructions from local authorities and emergency services. (7) Do not attempt to cross swollen rivers or streams. (8) After floodwaters recede, check for structural damage before re-entering buildings."
+    }
+  ]
+}

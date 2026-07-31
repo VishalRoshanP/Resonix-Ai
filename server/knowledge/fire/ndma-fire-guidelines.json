@@ -1,0 +1,27 @@
+{
+  "documentId": "ndma-fire-001",
+  "title": "NDMA Guidelines on Fire Emergency Management",
+  "source": "National Disaster Management Authority, Government of India",
+  "sourceUrl": "https://ndma.gov.in/images/guidelines/management-of-urban-fire.pdf",
+  "category": "FIRE",
+  "version": "1.5",
+  "lastUpdated": "2023-11-20",
+  "language": "en",
+  "sections": [
+    {
+      "sectionId": "fire-prevention",
+      "title": "Fire Prevention and Safety Measures",
+      "content": "Fire prevention measures include: (1) Ensuring all buildings comply with National Building Code fire safety norms. (2) Installing fire detection and alarm systems in commercial and high-rise buildings. (3) Maintaining adequate fire exits, staircases, and escape routes. (4) Conducting regular fire safety audits and drills. (5) Ensuring availability of fire extinguishers and fire hydrants. (6) Restricting storage of flammable materials in residential areas. (7) Proper electrical wiring inspection and maintenance. (8) Installing lightning arrestors in buildings over 15 meters height."
+    },
+    {
+      "sectionId": "fire-response",
+      "title": "Fire Emergency Response Protocol",
+      "content": "During a fire emergency: (1) Immediately call the fire services emergency number 101. (2) Activate building fire alarm and begin evacuation. (3) Use stairways, never elevators, during fire evacuation. (4) Crawl low under smoke to breathe cleaner air near the floor. (5) Feel doors before opening — hot doors indicate fire on the other side. (6) If trapped, close doors between you and the fire, seal gaps with wet cloth. (7) Signal for help from a window using a flashlight or bright cloth. (8) Fire services personnel should establish water supply, deploy aerial ladder platforms for high-rise rescues, and conduct systematic floor-by-floor search."
+    },
+    {
+      "sectionId": "fire-first-aid",
+      "title": "First Aid for Fire Burn Injuries",
+      "content": "For burn injuries: (1) Remove the person from the fire source and ensure scene safety. (2) Cool the burn immediately with clean, cool running water for at least 20 minutes. (3) Do not apply ice, butter, toothpaste, or any home remedy to burns. (4) Remove clothing and jewelry near the burn unless stuck to the skin. (5) Cover the burn loosely with a sterile or clean bandage. (6) For severe burns covering large body areas, wrap the person in a clean sheet. (7) Monitor for signs of shock: pale skin, weakness, rapid pulse. (8) Seek immediate medical attention for burns affecting the face, hands, feet, genitals, or that cover large areas."
+    }
+  ]
+}

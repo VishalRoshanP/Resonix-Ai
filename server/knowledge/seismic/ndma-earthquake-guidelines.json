@@ -1,0 +1,27 @@
+{
+  "documentId": "ndma-earthquake-001",
+  "title": "NDMA Guidelines on Management of Earthquakes",
+  "source": "National Disaster Management Authority, Government of India",
+  "sourceUrl": "https://ndma.gov.in/images/guidelines/earthquake.pdf",
+  "category": "SEISMIC",
+  "version": "2.1",
+  "lastUpdated": "2024-03-10",
+  "language": "en",
+  "sections": [
+    {
+      "sectionId": "earthquake-preparedness",
+      "title": "Earthquake Preparedness Measures",
+      "content": "Earthquake preparedness includes: (1) All buildings in seismic zones III, IV, and V must comply with Bureau of Indian Standards IS 1893 earthquake-resistant design codes. (2) Conduct seismic vulnerability assessments and retrofit critical infrastructure. (3) Prepare family earthquake emergency kits with water, food, first aid, flashlight, and battery-powered radio. (4) Identify safe spots in every room: under sturdy tables, desks, or against interior walls. (5) Secure heavy furniture, water heaters, and gas appliances to walls. (6) Know how to shut off gas, electricity, and water supply. (7) Practice Drop, Cover, Hold On drills regularly."
+    },
+    {
+      "sectionId": "earthquake-response",
+      "title": "Earthquake Emergency Response Protocol",
+      "content": "During an earthquake: (1) If indoors, Drop to the ground, take Cover under a sturdy desk or table, and Hold On until shaking stops. (2) Stay away from windows, exterior walls, and anything that could fall. (3) If outdoors, move to a clear area away from buildings, power lines, and trees. (4) If driving, pull over to the side of the road and stop; stay inside the vehicle. (5) After shaking stops, evacuate damaged buildings and move to designated open assembly areas. (6) Be prepared for aftershocks. (7) Check for injuries and provide first aid. (8) Do not use elevators. (9) NDRF teams should conduct systematic search and rescue using specialized equipment including seismic listening devices, rescue cameras, and pneumatic lifting equipment."
+    },
+    {
+      "sectionId": "earthquake-structural",
+      "title": "Post-Earthquake Structural Safety Assessment",
+      "content": "After an earthquake: (1) Do not enter visibly damaged buildings until structural engineers have assessed safety. (2) Check for gas leaks — if you smell gas, open windows and leave immediately. (3) Inspect foundations, walls, and chimneys for cracks. (4) Watch for fallen power lines and report them to the electricity department. (5) Buildings with structural damage should be marked with red, yellow, or green tags indicating unsafe, restricted use, or inspected conditions. (6) Document all damage with photographs for insurance and relief claims."
+    }
+  ]
+}
