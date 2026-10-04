@@ -99,6 +99,11 @@ export function AuthProvider({ children }) {
       await authService.logout();
     } finally {
       tokenManager.clearAll();
+      try {
+        localStorage.removeItem('resonix_active_incident');
+        localStorage.removeItem('resonix_last_packet_id');
+        localStorage.removeItem('resonix_last_client_request_id');
+      } catch (_) {}
       setCitizenUser(null);
       setIsCitizenGuest(true);
       setGuestSession(createGuestSession());

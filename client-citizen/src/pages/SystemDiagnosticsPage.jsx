@@ -17,7 +17,7 @@ export default function SystemDiagnosticsPage() {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
-          <h3 className="text-body-lg font-bold text-primary mb-4">Gemma 4 Engine</h3>
+          <h3 className="text-body-lg font-bold text-primary mb-4">Emergency Intelligence Engine</h3>
           <div className="space-y-3">
             {[
               { label: 'Version', value: '4.0.2' },

@@ -1,6 +1,7 @@
 const ApiResponse = require('../utils/apiResponse');
 const ApiError = require('../utils/apiError');
 const User = require('../models/User');
+const logger = require('../utils/logger');
 
 /**
  * @route   GET /api/users
@@ -13,55 +14,28 @@ const getUsers = async (req, res, next) => {
     const limit = parseInt(req.query.limit, 10) || 10;
 
     let users = [];
+    let total = 0;
 
     if (User?.db?.readyState === 1) {
       try {
         const skip = (page - 1) * limit;
         const dbUsers = await User.find().select('-password').sort({ createdAt: -1 }).skip(skip).limit(limit);
-        const total = await User.countDocuments();
+        total = await User.countDocuments();
         if (dbUsers && dbUsers.length > 0) {
           users = dbUsers.map((u) => u.toObject());
-          return ApiResponse.success(res, 200, 'Users retrieved successfully from database', {
-            users,
-            pagination: {
-              total,
-              page,
-              limit,
-              totalPages: Math.ceil(total / limit) || 1,
-            },
-          });
         }
       } catch (dbErr) {
-        // Fallback to placeholder if query error
+        logger.error(`[UserController] Failed to fetch users: ${dbErr.message}`);
       }
     }
 
-    const placeholderUsers = [
-      {
-        id: 'usr_001',
-        name: 'Commander Sarah Jenkins',
-        email: 's.jenkins@resonix.ai',
-        role: 'commander',
-        status: 'active',
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 'usr_002',
-        name: 'Responder Alex Rivera',
-        email: 'a.rivera@resonix.ai',
-        role: 'responder',
-        status: 'active',
-        createdAt: new Date().toISOString(),
-      },
-    ];
-
     return ApiResponse.success(res, 200, 'Users retrieved successfully', {
-      users: placeholderUsers,
+      users,
       pagination: {
-        total: placeholderUsers.length,
+        total,
         page,
         limit,
-        totalPages: 1,
+        totalPages: Math.ceil(total / limit) || 1,
       },
     });
   } catch (error) {
@@ -89,22 +63,7 @@ const getUserById = async (req, res, next) => {
       } catch (_) {}
     }
 
-    if (id === 'notfound') {
-      return next(new ApiError(404, `User with ID '${id}' not found`));
-    }
-
-    return ApiResponse.success(res, 200, 'User details retrieved', {
-      user: {
-        id,
-        name: 'Commander Sarah Jenkins',
-        email: 's.jenkins@resonix.ai',
-        role: 'commander',
-        status: 'active',
-        language: 'en',
-        phone: '+15550199',
-        createdAt: new Date().toISOString(),
-      },
-    });
+    return next(new ApiError(404, `User with ID '${id}' not found`));
   } catch (error) {
     next(error);
   }
@@ -132,17 +91,12 @@ const createUser = async (req, res, next) => {
         newUser = newUser.toObject();
         delete newUser.password;
       } catch (dbErr) {
-        // Fallback
+        return next(dbErr);
       }
     }
 
     if (!newUser) {
-      newUser = {
-        id: `usr_${Date.now()}`,
-        ...req.body,
-        status: 'active',
-        createdAt: new Date().toISOString(),
-      };
+      return next(new ApiError(500, 'Failed to create user account in database.'));
     }
 
     return ApiResponse.success(res, 201, 'User created successfully', { user: newUser });
@@ -165,15 +119,13 @@ const updateUser = async (req, res, next) => {
       try {
         updatedUser = await User.findByIdAndUpdate(id, req.body, { new: true, runValidators: true }).select('-password');
         if (updatedUser) updatedUser = updatedUser.toObject();
-      } catch (_) {}
+      } catch (dbErr) {
+        return next(dbErr);
+      }
     }
 
     if (!updatedUser) {
-      updatedUser = {
-        id,
-        ...req.body,
-        updatedAt: new Date().toISOString(),
-      };
+      return next(new ApiError(404, `User with ID '${id}' not found`));
     }
 
     return ApiResponse.success(res, 200, 'User profile updated successfully', { user: updatedUser });
@@ -226,7 +178,7 @@ const updateLanguagePreference = async (req, res, next) => {
 
     // Update in MongoDB if Mongoose connection is active and user exists
     try {
-      if (User?.db?.readyState === 1 && id && !id.startsWith('usr_mock')) {
+      if (User?.db?.readyState === 1 && id) {
         updatedUser = await User.findByIdAndUpdate(
           id,
           { language },
@@ -234,15 +186,11 @@ const updateLanguagePreference = async (req, res, next) => {
         ).select('-password');
       }
     } catch (dbError) {
-      // Fallback for mock/demo mode
+      logger.error(`[UserController] Failed to update language preference: ${dbError.message}`);
     }
 
     if (!updatedUser) {
-      updatedUser = {
-        id,
-        language,
-        updatedAt: new Date().toISOString(),
-      };
+      return next(new ApiError(404, `User with ID '${id}' not found`));
     }
 
     return ApiResponse.success(res, 200, 'User language preference updated successfully', {

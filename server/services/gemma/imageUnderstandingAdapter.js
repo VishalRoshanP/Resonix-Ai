@@ -1,5 +1,5 @@
 /**
- * Image Understanding Adapter Layer for Gemma 4 E4B
+ * Image Understanding Adapter Layer for RESONIX AI
  * 
  * Provides abstraction so image understanding can operate:
  * 1. Directly via Gemma 4 multimodal vision API if supported by the deployment.
@@ -35,6 +35,29 @@ class ImageUnderstandingAdapter {
    */
   async processImage({ imageData, mimeType = 'image/jpeg', promptText = '', context = {} } = {}) {
     logger.info('[ImageUnderstandingAdapter] Processing image payload...');
+
+    if (!imageData) {
+      logger.info('[ImageUnderstandingAdapter] No image data provided. Returning IMAGE_ANALYSIS_UNAVAILABLE state.');
+      return {
+        hasPhoto: false,
+        status: 'IMAGE_ANALYSIS_UNAVAILABLE',
+        reasoning: 'No photo evidence provided by citizen.',
+        visibleDisaster: null,
+        floodDepth: null,
+        fireVisible: false,
+        collapsedBuildings: false,
+        roadBlockage: false,
+        visibleInjuries: false,
+        smokePresent: false,
+        waterPresent: false,
+        vehiclesInvolved: [],
+        infrastructureDamage: null,
+        confidenceScores: null,
+        humanVerificationRequired: false,
+        humanVerified: false,
+        model: this.client.config?.gemmaModel || 'resonix-vision-intelligence',
+      };
+    }
 
     const systemPrompt = imageUnderstandingPrompts.getSystemPrompt();
     const schemaDescription = imageUnderstandingPrompts.getSchemaDescription();
@@ -106,8 +129,8 @@ class ImageUnderstandingAdapter {
       },
       humanVerificationRequired: true,
       humanVerified: false,
-      status: 'PROCESSED_BY_GEMMA4_VISION',
-      model: this.client.config?.hfModel || 'google/gemma-4-e4b-it',
+      status: 'PROCESSED_BY_VISION_SERVICE',
+      model: this.client.config?.gemmaModel || 'resonix-vision-intelligence',
     };
 
     if (!rawResponse || rawResponse.success === false) {
@@ -130,8 +153,8 @@ class ImageUnderstandingAdapter {
       confidenceScores: typeof parsed.confidenceScores === 'object' && parsed.confidenceScores ? parsed.confidenceScores : defaultObservations.confidenceScores,
       humanVerificationRequired: true, // Always true (never replace human verification)
       humanVerified: false,
-      status: 'QUEUED_FOR_GEMMA4',
-      model: this.client.config?.hfModel || 'google/gemma-4-e4b-it',
+      status: 'QUEUED_FOR_VISION_ANALYSIS',
+      model: this.client.config?.gemmaModel || 'resonix-vision-intelligence',
     };
   }
 }

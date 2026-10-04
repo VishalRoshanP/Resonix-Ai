@@ -6,11 +6,18 @@ import { citizenSocketClient } from '../services/socketClient';
  * 
  * Provides reactive access to:
  * - isConnected boolean state
+ * - isReconnecting boolean state
  * - lastSocketEvent object
  * - connect & disconnect methods
+ * 
+ * Reconnect Handling:
+ * - Preserves current state on disconnect
+ * - Socket.IO auto-reconnects with exponential backoff
+ * - Emits SOCKET_RECONNECTED event for pages to fetch latest state
  */
 export function useSocket(userId = 'usr_guest', autoConnect = true) {
   const [isConnected, setIsConnected] = useState(() => citizenSocketClient.isConnected);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [lastSocketEvent, setLastSocketEvent] = useState(null);
 
   useEffect(() => {
@@ -19,10 +26,13 @@ export function useSocket(userId = 'usr_guest', autoConnect = true) {
     }
 
     const unsub = citizenSocketClient.onEvent((eventData) => {
-      if (eventData.type === 'SOCKET_CONNECTED') {
+      if (eventData.type === 'SOCKET_CONNECTED' || eventData.type === 'SOCKET_RECONNECTED') {
         setIsConnected(true);
+        setIsReconnecting(false);
       } else if (eventData.type === 'SOCKET_DISCONNECTED') {
         setIsConnected(false);
+      } else if (eventData.type === 'SOCKET_RECONNECTING') {
+        setIsReconnecting(true);
       }
       setLastSocketEvent(eventData);
     });
@@ -42,6 +52,7 @@ export function useSocket(userId = 'usr_guest', autoConnect = true) {
 
   return {
     isConnected,
+    isReconnecting,
     lastSocketEvent,
     connect,
     disconnect,

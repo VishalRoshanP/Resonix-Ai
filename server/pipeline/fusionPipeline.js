@@ -1,5 +1,5 @@
 /**
- * Fusion Pipeline for Gemma 4 E4B
+ * Fusion Pipeline for RESONIX AI
  * Multi-step pipeline that evaluates incoming reports against active incidents
  * to detect duplicates and merge related incident clusters.
  */

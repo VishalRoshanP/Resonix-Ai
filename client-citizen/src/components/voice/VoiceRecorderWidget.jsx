@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { useVoiceRecorder } from '../../hooks/useVoiceRecorder';
 import Button from '../ui/Button';
 
 export default function VoiceRecorderWidget({ onVoiceProcessed }) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const {
     formattedTime,
     audioUrl,
@@ -14,6 +16,7 @@ export default function VoiceRecorderWidget({ onVoiceProcessed }) {
     startRecording,
     stopRecording,
     cancelRecording,
+    deleteRecording,
     reRecord,
     sendToBackend,
     isIdle,
@@ -179,10 +182,11 @@ export default function VoiceRecorderWidget({ onVoiceProcessed }) {
             <Button
               variant="secondary"
               size="sm"
-              onClick={cancelRecording}
-              className="text-error border-error/30 hover:bg-error/10"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="text-error border-error/30 hover:bg-error/10 flex items-center gap-1"
             >
-              Clear
+              <span className="material-symbols-outlined text-xs">delete</span>
+              Delete
             </Button>
 
             <Button variant="secondary" size="sm" onClick={reRecord}>
@@ -193,19 +197,47 @@ export default function VoiceRecorderWidget({ onVoiceProcessed }) {
               Transmit Voice & STT Payload
             </Button>
           </div>
+
+          {/* Delete Voice Recording Confirmation Dialog */}
+          {showDeleteConfirm && (
+            <div className="p-3.5 rounded-xl bg-error/10 border border-error/30 space-y-2.5 animate-fade-in mt-2 text-left">
+              <div className="flex items-start gap-2 text-error">
+                <span className="material-symbols-outlined text-lg shrink-0 mt-0.5">warning</span>
+                <div>
+                  <p className="font-extrabold text-xs">Delete voice recording?</p>
+                  <p className="text-[11px] text-on-surface-variant mt-0.5">This will also remove the current transcript.</p>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-3 py-1.5 rounded-lg bg-surface border border-outline-variant text-xs font-bold text-primary hover:bg-surface-container cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteRecording();
+                    setShowDeleteConfirm(false);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-error text-white text-xs font-bold hover:brightness-110 cursor-pointer shadow-xs transition-colors flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-sm">delete</span>
+                  <span>Delete</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* 4. Gemma 4 AI Envelope Output Preview */}
+      {/* Transmitted Confirmation */}
       {backendResponse && (
-        <div className="p-3 bg-secondary/10 border border-secondary/30 rounded-xl text-xs font-mono text-primary space-y-1">
-          <div className="font-bold text-secondary flex items-center gap-1">
-            <span className="material-symbols-outlined text-sm">smart_toy</span>
-            Gemma 4 Telemetry Envelope Attached
-          </div>
-          <div>Primary Model: google/gemma-4-e4b-it</div>
-          <div>Pipeline Stage: VOICE_TRANSCRIPTION_TRIAGE</div>
-          <div>Packet Status: TRANSMITTED</div>
+        <div className="p-3 bg-success/10 border border-success/30 rounded-xl text-xs font-bold text-success flex items-center gap-2">
+          <span className="material-symbols-outlined text-sm">check_circle</span>
+          <span>Emergency message sent</span>
         </div>
       )}
     </div>

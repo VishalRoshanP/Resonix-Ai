@@ -1,13 +1,14 @@
 import { tokenManager } from './tokenManager';
-
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
+import { env } from '../utils/env';
 
 /**
  * Generic HTTP fetch wrapper for client-responder with Request & Response Interceptors.
- * Connects to the single shared Express backend on port 5000.
+ * Connects to the single shared Express backend.
  */
 async function fetchApi(endpoint, options = {}) {
-  const url = endpoint.startsWith('http') ? endpoint : `${BASE_URL}${endpoint}`;
+  const baseUrl = env.apiBaseUrl;
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${cleanEndpoint}`;
 
   // 1. Request Interceptor: Attach Responder JWT Token
   const token = tokenManager.getToken();
@@ -17,10 +18,13 @@ async function fetchApi(endpoint, options = {}) {
     ...options.headers,
   };
 
+  const signal = options.signal || AbortSignal.timeout(25000);
+
   try {
     const response = await fetch(url, {
       ...options,
       headers,
+      signal,
     });
 
     // 2. Response Interceptor: Handle 401 Unauthorized / Token Expiration
@@ -40,17 +44,96 @@ async function fetchApi(endpoint, options = {}) {
 
     return await response.json();
   } catch (error) {
-    console.warn(`[RESONIX Responder API] Endpoint request error: ${endpoint}`, error.message);
+    // Suppress transient network errors (cold-boot race, Wi-Fi roaming, VPN reconnect, signal timeout) from cluttering console
+    const msg = error.message || '';
+    const isTransient = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_') || msg.includes('aborted') || msg.includes('timed out') || error.name === 'TimeoutError';
+    const logFn = isTransient ? console.debug : console.warn;
+    logFn(`[RESONIX Responder API] Endpoint request error: ${endpoint}`, msg);
     throw error;
   }
 }
 
+// In-flight GET request coalescing map (prevents duplicate simultaneous network requests)
+const inFlightGets = new Map();
+
+// Safe short-lived client read cache (only for static read-only endpoints, NEVER mutations or SOS)
+const safeReadCache = new Map();
+
+const CACHE_CONFIG = [
+  { prefix: '/weather', ttl: 30000 },
+  { prefix: '/resources', ttl: 10000 },
+  { prefix: '/incidents/dashboard-summary', ttl: 5000 },
+];
+
+export const invalidateApiCache = (pattern) => {
+  if (!pattern) {
+    safeReadCache.clear();
+    return;
+  }
+  for (const key of safeReadCache.keys()) {
+    if (key.includes(pattern)) {
+      safeReadCache.delete(key);
+    }
+  }
+};
+
 // Base HTTP verbs
 export const api = {
-  get: (endpoint) => fetchApi(endpoint, { method: 'GET' }),
-  post: (endpoint, body) => fetchApi(endpoint, { method: 'POST', body: JSON.stringify(body) }),
-  put: (endpoint, body) => fetchApi(endpoint, { method: 'PUT', body: JSON.stringify(body) }),
-  delete: (endpoint) => fetchApi(endpoint, { method: 'DELETE' }),
+  get: (endpoint, options = {}) => {
+    const isFresh = options.fresh === true || options.bypassCache === true;
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+
+    // 1. Check safe read cache if applicable
+    if (!isFresh) {
+      const rule = CACHE_CONFIG.find((c) => cleanEndpoint.startsWith(c.prefix));
+      if (rule) {
+        const cached = safeReadCache.get(cleanEndpoint);
+        if (cached && Date.now() - cached.timestamp < rule.ttl) {
+          return Promise.resolve(cached.data);
+        }
+      }
+    }
+
+    // 2. Coalesce in-flight identical GET requests
+    if (inFlightGets.has(cleanEndpoint) && !options.bypassDeduplication) {
+      return inFlightGets.get(cleanEndpoint);
+    }
+
+    const requestPromise = fetchApi(endpoint, { method: 'GET', ...options })
+      .then((data) => {
+        // Cache if eligible
+        const rule = CACHE_CONFIG.find((c) => cleanEndpoint.startsWith(c.prefix));
+        if (rule) {
+          safeReadCache.set(cleanEndpoint, { data, timestamp: Date.now() });
+        }
+        return data;
+      })
+      .finally(() => {
+        inFlightGets.delete(cleanEndpoint);
+      });
+
+    inFlightGets.set(cleanEndpoint, requestPromise);
+    return requestPromise;
+  },
+  post: (endpoint, body, options = {}) => {
+    // Invalidate relevant cache on mutations
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    if (cleanEndpoint.startsWith('/incidents')) invalidateApiCache('/incidents');
+    if (cleanEndpoint.startsWith('/resources')) invalidateApiCache('/resources');
+    return fetchApi(endpoint, { method: 'POST', body: JSON.stringify(body), ...options });
+  },
+  put: (endpoint, body, options = {}) => {
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    if (cleanEndpoint.startsWith('/incidents')) invalidateApiCache('/incidents');
+    if (cleanEndpoint.startsWith('/resources')) invalidateApiCache('/resources');
+    return fetchApi(endpoint, { method: 'PUT', body: JSON.stringify(body), ...options });
+  },
+  delete: (endpoint, options = {}) => {
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    if (cleanEndpoint.startsWith('/incidents')) invalidateApiCache('/incidents');
+    if (cleanEndpoint.startsWith('/resources')) invalidateApiCache('/resources');
+    return fetchApi(endpoint, { method: 'DELETE', ...options });
+  },
 };
 
 // 7 Standardized Shared API Endpoint Modules
@@ -79,11 +162,29 @@ export const citizenApi = {
 };
 
 export const incidentApi = {
-  getIncidents: () => api.get('/incidents'),
+  getIncidents: async (options = {}) => {
+    const res = await api.get('/incidents', options);
+    if (Array.isArray(res)) return res;
+    if (Array.isArray(res?.data?.incidents)) return res.data.incidents;
+    if (Array.isArray(res?.data?.data)) return res.data.data;
+    if (Array.isArray(res?.data)) return res.data;
+    if (Array.isArray(res?.incidents)) return res.incidents;
+    return [];
+  },
+  getDashboardSummary: async (options = {}) => {
+    const res = await api.get('/incidents/dashboard-summary', options);
+    return res?.data || res;
+  },
   createIncident: (data) => api.post('/incidents', data),
   updateIncident: (id, data) => api.put(`/incidents/${id}`, data),
+  acknowledgeIncident: (id, payload = {}) => api.put(`/incidents/${id}/acknowledge`, payload),
   deleteIncident: (id) => api.delete(`/incidents/${id}`),
   clearHistory: () => api.delete('/incidents/history'),
+  getFusionClusters: (options = {}) => api.get('/incidents/fusion', options),
+};
+
+export const incidentFusionApi = {
+  getClusters: (status) => api.get(`/incidents/fusion${status ? `?status=${status}` : ''}`),
 };
 
 export const aiApi = {
@@ -105,8 +206,80 @@ export const notificationApi = {
   getRelayStatus: () => api.get('/relay'),
 };
 
+export const reportApi = {
+  getReports: (options = {}) => api.get('/reports', options),
+  getReportById: (id) => api.get(`/reports/${id}`),
+  triageReport: (data) => api.post('/reports/triage', data),
+  triageReportById: (id) => api.post(`/reports/${id}/triage`, {}),
+};
+
 export const relayApi = {
   getRelayNodes: () => api.get('/relay'),
   getAnalytics: () => api.get('/relay/analytics'),
   getAnalyticsById: (id) => api.get(`/relay/analytics/${id}`),
 };
+
+export const resourceApi = {
+  getResources: async (params = {}) => {
+    const { signal, ...queryParams } = params;
+    const query = new URLSearchParams();
+    if (queryParams.search) query.set('search', queryParams.search);
+    if (queryParams.status && queryParams.status !== 'ALL') query.set('status', queryParams.status);
+    if (queryParams.assignedIncidentId) query.set('assignedIncidentId', queryParams.assignedIncidentId);
+    if (queryParams.incidentId) query.set('incidentId', queryParams.incidentId);
+    if (queryParams.page) query.set('page', queryParams.page);
+    if (queryParams.limit) query.set('limit', queryParams.limit);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await api.get(`/resources${qs}`, signal ? { signal } : {});
+    if (Array.isArray(res)) return res;
+    if (Array.isArray(res?.data?.resources)) return res.data.resources;
+    if (Array.isArray(res?.data)) return res.data;
+    if (Array.isArray(res?.resources)) return res.resources;
+    return [];
+  },
+  getResourceById: (id) => api.get(`/resources/${id}`),
+  createResource: (data) => api.post('/resources', data),
+  updateResource: (id, data) => api.put(`/resources/${id}`, data),
+  assignResource: (data) => api.post('/resources/assign', data),
+  releaseResource: (id) => api.post(`/resources/${id}/release`, {}),
+  deleteResource: (id) => api.delete(`/resources/${id}`),
+};
+
+export const settingsApi = {
+  getSettings: () => api.get('/settings'),
+  updateSettings: (data) => api.put('/settings', data),
+};
+
+export const weatherApi = {
+  getCurrent: (lat, lon, options = {}) =>
+    api.get(`/weather/current?lat=${lat}&lon=${lon}${options.fresh ? '&fresh=true' : ''}`, options.signal ? { signal: options.signal } : {}),
+  getHourlyForecast: (lat, lon, options = {}) =>
+    api.get(`/weather/forecast/hourly?lat=${lat}&lon=${lon}${options.fresh ? '&fresh=true' : ''}`, options.signal ? { signal: options.signal } : {}),
+  getDailyForecast: (lat, lon, options = {}) =>
+    api.get(`/weather/forecast/daily?lat=${lat}&lon=${lon}${options.fresh ? '&fresh=true' : ''}`, options.signal ? { signal: options.signal } : {}),
+  getWarnings: (lat, lon, options = {}) =>
+    api.get(`/weather/warnings?lat=${lat}&lon=${lon}${options.fresh ? '&fresh=true' : ''}`, options.signal ? { signal: options.signal } : {}),
+  getComprehensive: (lat, lon, options = {}) =>
+    api.get(`/weather/comprehensive?lat=${lat}&lon=${lon}${options.fresh ? '&fresh=true' : ''}`, options.signal ? { signal: options.signal } : {}),
+  lookupLocation: (query, options = {}) =>
+    api.get(`/weather/lookup?q=${encodeURIComponent(query)}`, options.signal ? { signal: options.signal } : {}),
+  reverseLookup: (lat, lon, options = {}) =>
+    api.get(`/weather/reverse-lookup?lat=${lat}&lon=${lon}`, options.signal ? { signal: options.signal } : {}),
+  askWeather: (query, lat, lon, options = {}) =>
+    api.post('/weather/ask', { query, lat, lon, ...options }),
+  getActiveAlerts: (lat, lon, options = {}) =>
+    api.get(`/weather/alerts/active${lat != null && lon != null ? `?lat=${lat}&lon=${lon}` : ''}`, options.signal ? { signal: options.signal } : {}),
+  getLocalRisk: (lat, lon, options = {}) =>
+    api.get(`/weather/risk?lat=${lat}&lon=${lon}${options.fresh ? '&fresh=true' : ''}`, options.signal ? { signal: options.signal } : {}),
+  getNwpForecast: (lat, lon, options = {}) =>
+    api.get(`/weather/nwp/forecast?lat=${lat}&lon=${lon}${options.model ? `&model=${options.model}` : ''}${options.fresh ? '&fresh=true' : ''}`, options.signal ? { signal: options.signal } : {}),
+  getNwpComparison: (lat, lon, options = {}) =>
+    api.get(`/weather/nwp/compare?lat=${lat}&lon=${lon}${options.fresh ? '&fresh=true' : ''}`, options.signal ? { signal: options.signal } : {}),
+  getNwpModels: (options = {}) =>
+    api.get('/weather/nwp/models', options.signal ? { signal: options.signal } : {}),
+  getSituationView: (lat, lon, options = {}) =>
+    api.get(`/weather/situation?lat=${lat}&lon=${lon}${options.fresh ? '&fresh=true' : ''}${options.radiusKm ? `&radiusKm=${options.radiusKm}` : ''}`, options.signal ? { signal: options.signal } : {}),
+};
+
+
+

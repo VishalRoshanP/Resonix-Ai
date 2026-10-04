@@ -1,5 +1,7 @@
 const ApiResponse = require('../utils/apiResponse');
+const mongoose = require('mongoose');
 const incidentService = require('../services/incidentService');
+const RelayNode = require('../models/RelayNode');
 
 /**
  * @route   GET /api/dashboard/stats
@@ -14,14 +16,23 @@ const getDashboardStats = async (req, res, next) => {
     const activeIncidents = incidents.filter((i) => ['OPEN', 'ACTIVE', 'DISPATCHED', 'EN_ROUTE', 'ON_SCENE'].includes((i.status || '').toUpperCase())).length;
     const criticalAlerts = incidents.filter((i) => (i.severity || i.priority || '').toUpperCase() === 'CRITICAL').length;
 
+    let activeRelayNodes = 0;
+    if (RelayNode?.db?.readyState === 1) {
+      try {
+        activeRelayNodes = await RelayNode.countDocuments({ status: { $in: ['active', 'ACTIVE'] } });
+      } catch (_) {}
+    }
+
+    const isDatabaseConnected = mongoose.connection && mongoose.connection.readyState === 1;
+
     const stats = {
       activeIncidents,
       criticalAlerts,
       totalIncidents: incidents.length,
       deployedPersonnel: activeIncidents > 0 ? activeIncidents * 4 : 0,
-      activeRelayNodes: 12,
-      meshNetworkStatus: 'Optimal',
-      systemHealth: 99.8,
+      activeRelayNodes,
+      meshNetworkStatus: activeRelayNodes > 0 ? 'Operational' : 'Standby',
+      systemHealth: isDatabaseConnected ? 100 : 0,
       lastUpdated: new Date().toISOString(),
     };
 
@@ -44,7 +55,9 @@ const getDashboardActivity = async (req, res, next) => {
     const activityFeed = incidents.slice(0, 10).map((inc) => ({
       id: `act_${inc._id || inc.id}`,
       type: 'incident_reported',
-      message: `${inc.category || 'EMERGENCY'} incident reported in ${inc.sector || 'Sector 4'}`,
+      message: inc.sector
+        ? `${inc.category || 'EMERGENCY'} incident reported in ${inc.sector}`
+        : `${inc.category || 'EMERGENCY'} incident reported`,
       timestamp: inc.createdAt || new Date().toISOString(),
     }));
 

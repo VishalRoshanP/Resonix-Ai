@@ -4,6 +4,8 @@
 
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 
 /* ===== Tailwind v4 Theme Configuration ===== */
 @theme {
@@ -279,32 +281,163 @@ body {
   animation: slide-in-right 0.3s ease-out;
 }
 
-/* ===== SOS Button Animations ===== */
+/* ===== SOS Button & Emergency Interaction Animations ===== */
 @keyframes sos-breathe {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.25), 0 4px 24px rgba(220, 38, 38, 0.15); }
-  50% { box-shadow: 0 0 0 12px rgba(220, 38, 38, 0), 0 8px 32px rgba(220, 38, 38, 0.25); }
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.20), 0 4px 20px rgba(220, 38, 38, 0.15);
+  }
+  50% {
+    transform: scale(1.015);
+    box-shadow: 0 0 0 10px rgba(220, 38, 38, 0), 0 6px 28px rgba(220, 38, 38, 0.22);
+  }
 }
 
 @keyframes sos-glow-ring {
-  0%, 100% { opacity: 0.15; transform: scale(1); }
-  50% { opacity: 0.3; transform: scale(1.04); }
+  0%, 100% { opacity: 0.12; transform: scale(1); }
+  50% { opacity: 0.28; transform: scale(1.03); }
 }
 
 @keyframes sos-ripple {
-  0% { transform: scale(0.95); opacity: 0.5; }
+  0% { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+
+@keyframes category-confirm {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+
+@keyframes calm-dot-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.22); opacity: 1; }
+}
+
+@keyframes calm-beacon-ring {
+  0% { transform: scale(1); opacity: 0.45; }
+  70% { transform: scale(1.7); opacity: 0; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+
+@keyframes live-waveform {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes subtle-dot {
+  0%, 20% { opacity: 0.25; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-1.5px); }
+  80%, 100% { opacity: 0.25; transform: translateY(0); }
+}
+
+@keyframes gps-check-settle {
+  0% { transform: scale(0.8); opacity: 0.5; }
+  60% { transform: scale(1.15); }
   100% { transform: scale(1); opacity: 1; }
 }
 
+@keyframes state-change-highlight {
+  0% { background-color: rgba(198, 106, 26, 0.18); }
+  100% { background-color: transparent; }
+}
+
 .animate-sos-breathe {
-  animation: sos-breathe 3s ease-in-out infinite;
+  animation: sos-breathe 3.5s ease-in-out infinite;
 }
 
 .animate-sos-glow-ring {
-  animation: sos-glow-ring 3s ease-in-out infinite;
+  animation: sos-glow-ring 3.5s ease-in-out infinite;
 }
 
 .animate-sos-ripple {
   animation: sos-ripple 0.15s ease-out;
+}
+
+.animate-category-confirm {
+  animation: category-confirm 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.animate-calm-dot {
+  animation: calm-dot-breathe 2.4s ease-in-out infinite;
+}
+
+.animate-calm-beacon {
+  animation: calm-beacon-ring 2.8s ease-out infinite;
+}
+
+.animate-live-waveform-1 {
+  animation: live-waveform 0.65s ease-in-out infinite;
+}
+
+.animate-live-waveform-2 {
+  animation: live-waveform 0.85s ease-in-out infinite 0.15s;
+}
+
+.animate-live-waveform-3 {
+  animation: live-waveform 0.70s ease-in-out infinite 0.3s;
+}
+
+.animate-live-waveform-4 {
+  animation: live-waveform 0.95s ease-in-out infinite 0.1s;
+}
+
+.animate-live-waveform-5 {
+  animation: live-waveform 0.75s ease-in-out infinite 0.25s;
+}
+
+.animate-subtle-dot-1 {
+  animation: subtle-dot 1.2s ease-in-out infinite 0s;
+}
+
+.animate-subtle-dot-2 {
+  animation: subtle-dot 1.2s ease-in-out infinite 0.2s;
+}
+
+.animate-subtle-dot-3 {
+  animation: subtle-dot 1.2s ease-in-out infinite 0.4s;
+}
+
+.animate-gps-check {
+  animation: gps-check-settle 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.animate-state-change {
+  animation: state-change-highlight 0.45s ease-out;
+}
+
+/* ===== Accessibility: Prefers Reduced Motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-sos-breathe,
+  .animate-sos-glow-ring,
+  .animate-sos-ripple,
+  .animate-category-confirm,
+  .animate-calm-dot,
+  .animate-calm-beacon,
+  .animate-live-waveform-1,
+  .animate-live-waveform-2,
+  .animate-live-waveform-3,
+  .animate-live-waveform-4,
+  .animate-live-waveform-5,
+  .animate-subtle-dot-1,
+  .animate-subtle-dot-2,
+  .animate-subtle-dot-3,
+  .animate-gps-check,
+  .animate-pulse,
+  .animate-ping,
+  .animate-spin {
+    animation: none !important;
+    transform: none !important;
+  }
 }
 
 /* ===== Component Utility Classes ===== */
@@ -373,3 +506,50 @@ textarea:disabled,
 select:disabled {
   opacity: 0.75 !important;
 }
+
+/* ===== Real Dark Theme Tokens ===== */
+.dark, html.dark {
+  --color-primary: #fdf8f7;
+  --color-primary-container: #23211f;
+  --color-on-primary: #191817;
+  --color-on-primary-container: #cbc5c2;
+
+  --color-surface: #181716;
+  --color-surface-dim: #131211;
+  --color-surface-bright: #242221;
+  --color-surface-container: #22201e;
+  --color-surface-container-low: #1c1b1a;
+  --color-surface-container-high: #2c2927;
+  --color-surface-container-highest: #373432;
+  --color-surface-container-lowest: #141312;
+  --color-on-surface: #fdf8f7;
+  --color-on-surface-variant: #b0aba8;
+
+  --color-background: #11100f;
+  --color-on-background: #fdf8f7;
+
+  --color-outline: #78736d;
+  --color-outline-variant: #3d3936;
+}
+
+/* ===== Real Font Size Scaling ===== */
+html[data-font-size="normal"] {
+  font-size: 16px;
+}
+html[data-font-size="large"] {
+  font-size: 18px;
+}
+html[data-font-size="xlarge"] {
+  font-size: 20px;
+}
+
+/* ===== Citizen GPS Result Card Theme Rules ===== */
+.citizen-gps-result-card {
+  background-color: #ffffff !important;
+}
+
+.dark .citizen-gps-result-card,
+html.dark .citizen-gps-result-card {
+  background-color: var(--color-surface-container-lowest, #141312) !important;
+}
+

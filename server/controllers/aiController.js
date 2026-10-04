@@ -67,7 +67,7 @@ const analyzeEmergency = async (req, res, next) => {
           voiceAnalysis: unifiedData.detailedAiOutput.voiceUnderstanding || null,
           imageAnalysis: unifiedData.detailedAiOutput.imageUnderstanding || null,
           textAnalysis: unifiedData.detailedAiOutput.textUnderstanding || null,
-          gemmaModel: gemmaConfig.ollamaModel || 'gemma4:e4b',
+          gemmaModel: gemmaConfig.gemmaModel || 'resonix-disaster-intelligence',
         });
       }
 
@@ -84,19 +84,30 @@ const analyzeEmergency = async (req, res, next) => {
       }
 
       if (ConfidenceScoreRecord?.db?.readyState === 1) {
+        const rawScores = [
+          unifiedData.primaryDisasterType?.confidence,
+          unifiedData.severity?.confidence,
+          unifiedData.urgencyTier?.confidence,
+          unifiedData.peopleCount?.confidence,
+          unifiedData.locationData?.confidence,
+        ].filter((s) => typeof s === 'number' && !isNaN(s));
+        const avgScore = rawScores.length > 0
+          ? Math.round((rawScores.reduce((a, b) => a + b, 0) / rawScores.length) * 100) / 100
+          : null;
+
         savedConfidenceRecord = await ConfidenceScoreRecord.create({
           scoreId: `scr_${Date.now()}`,
           reportId,
           packetId,
           unifiedEmergencyId,
           fieldConfidenceScores: {
-            disaster: unifiedData.primaryDisasterType?.confidence || 0.96,
-            severity: unifiedData.severity?.confidence || 0.95,
-            urgency: unifiedData.urgencyTier?.confidence || 0.97,
-            people: unifiedData.peopleCount?.confidence || 0.92,
-            location: unifiedData.locationData?.confidence || 0.99,
+            disaster: typeof unifiedData.primaryDisasterType?.confidence === 'number' ? unifiedData.primaryDisasterType.confidence : null,
+            severity: typeof unifiedData.severity?.confidence === 'number' ? unifiedData.severity.confidence : null,
+            urgency: typeof unifiedData.urgencyTier?.confidence === 'number' ? unifiedData.urgencyTier.confidence : null,
+            people: typeof unifiedData.peopleCount?.confidence === 'number' ? unifiedData.peopleCount.confidence : null,
+            location: typeof unifiedData.locationData?.confidence === 'number' ? unifiedData.locationData.confidence : null,
           },
-          overallConfidence: 0.94,
+          overallConfidence: avgScore,
         });
       }
 
@@ -113,7 +124,7 @@ const analyzeEmergency = async (req, res, next) => {
           medicalExplanation: unifiedData.explainableAi.medicalExplanation || '',
           hazardsExplanation: unifiedData.explainableAi.hazardsExplanation || '',
           fieldRationales: unifiedData.explainableAi.fieldRationales || {},
-          gemmaModel: gemmaConfig.ollamaModel || 'gemma4:e4b',
+          gemmaModel: gemmaConfig.gemmaModel || 'resonix-disaster-intelligence',
         });
       }
 
@@ -136,12 +147,12 @@ const analyzeEmergency = async (req, res, next) => {
           locationData: unifiedData.locationData,
           language: unifiedData.language,
           inputsProcessed: unifiedData.inputsProcessed,
-          fusionModel: gemmaConfig.ollamaModel || 'gemma4:e4b',
+          fusionModel: gemmaConfig.gemmaModel || 'resonix-disaster-intelligence',
         });
       }
     } catch (_) {}
 
-    return ApiResponse.success(res, 200, 'Gemma 4 emergency intelligence analysis completed', {
+    return ApiResponse.success(res, 200, 'Emergency intelligence analysis completed', {
       id: unifiedEmergencyId,
       reportId,
       analysis: unifiedData,
@@ -197,30 +208,24 @@ const getReportIntelligence = async (req, res, next) => {
       }
     } catch (_) {}
 
-    const defaultReportBundle = {
+    if (!unifiedRecord && !originalReport && !summaryRecord && !explainableRecord) {
+      return next(new ApiError(404, `Emergency report intelligence not found for ID '${id}'`));
+    }
+
+    const reportBundle = {
       id,
-      primaryDisaster: unifiedRecord?.primaryDisasterType?.value || 'FLOOD',
-      urgencyTier: unifiedRecord?.urgencyTier?.value || 'CRITICAL',
-      severity: unifiedRecord?.severity?.value || 'SEVERE',
-      originalSubmission: originalReport || {
-        reportId: id,
-        rawText: 'Flash flood alert in Sector 4. Medical assistance required.',
-        submittedAt: new Date().toISOString(),
-      },
-      shortSummary: summaryRecord?.shortSummary || unifiedRecord?.shortSummary || 'Flood reported.\n4 people affected.\nMedical assistance required.',
-      shortSummaryLines: summaryRecord?.shortSummaryLines || unifiedRecord?.shortSummaryLines || ['Flood reported.', '4 people affected.', 'Medical assistance required.'],
-      explainableAi: explainableRecord || unifiedRecord?.explainableAi || {
-        disasterExplanation: 'Disaster classified as Flood because multiple descriptions mention rising water entering homes.',
-        urgencyExplanation: 'Urgency marked High because children are reported and access routes appear blocked.',
-      },
-      detailedAiOutput: unifiedRecord?.detailedAiOutput || {
-        model: gemmaConfig.ollamaModel || 'gemma4:e4b',
-        status: 'QUEUED_FOR_GEMMA4',
-      },
+      primaryDisaster: unifiedRecord?.primaryDisasterType?.value || 'GENERAL',
+      urgencyTier: unifiedRecord?.urgencyTier?.value || null,
+      severity: unifiedRecord?.severity?.value || null,
+      originalSubmission: originalReport || null,
+      shortSummary: summaryRecord?.shortSummary || unifiedRecord?.shortSummary || null,
+      shortSummaryLines: summaryRecord?.shortSummaryLines || unifiedRecord?.shortSummaryLines || [],
+      explainableAi: explainableRecord || unifiedRecord?.explainableAi || null,
+      detailedAiOutput: unifiedRecord?.detailedAiOutput || null,
       fetchedAt: new Date().toISOString(),
     };
 
-    return ApiResponse.success(res, 200, 'Emergency report intelligence retrieved successfully', defaultReportBundle);
+    return ApiResponse.success(res, 200, 'Emergency report intelligence retrieved successfully', reportBundle);
   } catch (error) {
     next(error);
   }
@@ -251,8 +256,12 @@ const getReportSummary = async (req, res, next) => {
       }
     } catch (_) {}
 
-    const shortSummary = summaryRecord?.shortSummary || unifiedRecord?.shortSummary || 'Flood reported.\n4 people affected.\nMedical assistance required.';
-    const shortSummaryLines = summaryRecord?.shortSummaryLines || unifiedRecord?.shortSummaryLines || ['Flood reported.', '4 people affected.', 'Medical assistance required.'];
+    if (!summaryRecord && !unifiedRecord?.shortSummary) {
+      return next(new ApiError(404, `Emergency short summary for '${id}' not found`));
+    }
+
+    const shortSummary = summaryRecord?.shortSummary || unifiedRecord?.shortSummary || null;
+    const shortSummaryLines = summaryRecord?.shortSummaryLines || unifiedRecord?.shortSummaryLines || [];
 
     return ApiResponse.success(res, 200, 'Emergency short summary retrieved successfully', {
       id,
@@ -290,15 +299,11 @@ const getReportExplanation = async (req, res, next) => {
       }
     } catch (_) {}
 
-    const explainableAi = explainableRecord || unifiedRecord?.explainableAi || {
-      disasterExplanation: 'Disaster classified as Flood because multiple descriptions mention rising water entering homes.',
-      urgencyExplanation: 'Urgency marked High because children are reported and access routes appear blocked.',
-      severityExplanation: 'Severity assessed as Critical due to structural risk and trapped occupants.',
-      peopleExplanation: 'People count estimated at 4 based on voice dispatch transcript and field log.',
-      medicalExplanation: 'Medical need flagged Positive due to reported injury indicators and rescue request.',
-      hazardsExplanation: 'Visual hazards identified from photo analysis showing flash flood.',
-      model: gemmaConfig.ollamaModel || 'gemma4:e4b',
-    };
+    if (!explainableRecord && !unifiedRecord?.explainableAi) {
+      return next(new ApiError(404, `Explainable AI decision rationales for '${id}' not found`));
+    }
+
+    const explainableAi = explainableRecord || unifiedRecord?.explainableAi || null;
 
     return ApiResponse.success(res, 200, 'Explainable AI decision rationales retrieved successfully', {
       id,
@@ -312,7 +317,7 @@ const getReportExplanation = async (req, res, next) => {
 
 /**
  * @route   POST /api/v1/ai/gemma-language
- * @desc    Gemma Language Intelligence Phase 2 - Analyzes Speech-to-Text transcript using local Ollama gemma4:e4b
+ * @desc    Language Intelligence Phase 2 - Analyzes Speech-to-Text transcript
  * @access  Public / Citizen / Responder
  */
 const processGemmaLanguageIntelligence = async (req, res, next) => {
@@ -322,11 +327,49 @@ const processGemmaLanguageIntelligence = async (req, res, next) => {
 
     const result = await gemmaLanguageIntelligence.processLanguageIntelligence({ transcript });
 
-    return ApiResponse.success(res, 200, 'Gemma Language Intelligence analysis completed', {
+    return ApiResponse.success(res, 200, 'Language Intelligence analysis completed', {
       success: true,
       data: result,
       result,
-      gemmaModel: 'gemma4:e4b',
+      gemmaModel: gemmaConfig.gemmaModel || 'resonix-disaster-intelligence',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @route   POST /api/ai/transcribe
+ * @route   POST /api/v1/ai/transcribe
+ * @desc    Speech-to-Text ASR endpoint for emergency audio recordings (English, Hindi, Tamil, Kannada)
+ * @access  Public / Citizen / Responder
+ */
+const transcribeAudio = async (req, res, next) => {
+  try {
+    const { audioData, dataUrl, mimeType = 'audio/webm', durationSeconds = 0, transcript = '', languageHint = 'en' } = req.body || {};
+    const asrService = require('../services/speech/asrService');
+
+    const result = await asrService.transcribeAudio({
+      audioData: audioData || dataUrl || null,
+      mimeType,
+      durationSeconds: parseFloat(durationSeconds) || 0,
+      transcript,
+      languageHint,
+    });
+
+    return ApiResponse.success(res, 200, 'Speech-to-Text processing completed', {
+      success: result.success,
+      transcript: result.transcript,
+      rawTranscript: result.rawTranscript,
+      language: result.language,
+      confidence: result.confidence,
+      isUncertain: result.isUncertain,
+      transcriptionStatus: result.transcriptionStatus,
+      asrEngine: result.asrEngine,
+      latencyMs: result.latencyMs,
+      audioQuality: result.audioQuality,
+      failureReason: result.failureReason,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
@@ -340,4 +383,5 @@ module.exports = {
   getReportSummary,
   getReportExplanation,
   processGemmaLanguageIntelligence,
+  transcribeAudio,
 };

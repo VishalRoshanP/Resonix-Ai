@@ -13,7 +13,7 @@ export default function AlertCard({
 }) {
   const variant = severity === 'critical' ? 'emergency' : 'warning';
   const chipVariant = severity === 'critical' ? 'critical' : 'warning';
-  const chipLabel = severity === 'critical' ? 'Critical Level 1' : 'Warning Level 2';
+  const chipLabel = severity === 'critical' ? '🔴 SEVERE WARNING' : '🟠 MODERATE WARNING';
 
   return (
     <Card variant={variant} className="p-5">

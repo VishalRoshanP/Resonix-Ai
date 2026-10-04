@@ -26,11 +26,33 @@ class InputValidationService {
     }
 
     const sanitizedGps = {
-      hasGps: Boolean(reportPayload.gpsCoordinates?.hasGps || reportPayload.gpsCoordinates?.latitude),
-      latitude: parseFloat(reportPayload.gpsCoordinates?.latitude) || 12.9716,
-      longitude: parseFloat(reportPayload.gpsCoordinates?.longitude) || 77.5946,
-      accuracyMeters: parseFloat(reportPayload.gpsCoordinates?.accuracyMeters || reportPayload.gpsCoordinates?.accuracy) || 5.0,
-      sector: reportPayload.gpsCoordinates?.sector || 'Sector 4',
+      hasGps: Boolean(reportPayload.gpsCoordinates?.hasGps && reportPayload.gpsCoordinates?.latitude != null),
+      latitude: reportPayload.gpsCoordinates?.latitude != null ? parseFloat(reportPayload.gpsCoordinates.latitude) : null,
+      longitude: reportPayload.gpsCoordinates?.longitude != null ? parseFloat(reportPayload.gpsCoordinates.longitude) : null,
+      accuracyMeters: reportPayload.gpsCoordinates?.accuracyMeters != null ? parseFloat(reportPayload.gpsCoordinates.accuracyMeters) : null,
+      sector: reportPayload.gpsCoordinates?.sector || 'Location unavailable',
+    };
+
+    const photoRef = reportPayload.photoReference || (reportPayload.imageData || reportPayload.imagePath ? { dataUrl: reportPayload.imageData || reportPayload.imagePath, hasPhoto: true } : { hasPhoto: false });
+    const audioRef = reportPayload.audioReference || (reportPayload.audioData ? { hasAudio: true } : { hasAudio: false });
+
+    const citizenCategory = (reportPayload.category || reportPayload.incidentMetadata?.category || 'GENERAL').toUpperCase();
+    const packetId = reportPayload.packetId || reportPayload.id || `pkt_${Date.now()}`;
+    const victimName = reportPayload.victimName || reportPayload.citizenName || reportPayload.name || 'Anonymous Citizen';
+    const deviceId = reportPayload.deviceId || 'DEV_UNKNOWN';
+    const timestamp = reportPayload.timestamp || new Date().toISOString();
+
+    const citizenData = {
+      packetId,
+      victimName,
+      deviceId,
+      category: citizenCategory,
+      description,
+      transcript: transcript || voiceTranscript,
+      gpsCoordinates: sanitizedGps,
+      photoReference: photoRef,
+      audioReference: audioRef,
+      timestamp,
     };
 
     return {
@@ -38,11 +60,15 @@ class InputValidationService {
       errors,
       sanitizedPayload: {
         ...reportPayload,
+        packetId,
+        citizenData,
         combinedText: combinedText || 'Emergency signal reported',
         description,
         transcript: transcript || voiceTranscript,
         gpsCoordinates: sanitizedGps,
-        category: (reportPayload.category || reportPayload.incidentMetadata?.category || 'GENERAL').toUpperCase(),
+        photoReference: photoRef,
+        audioReference: audioRef,
+        category: citizenCategory,
       },
     };
   }

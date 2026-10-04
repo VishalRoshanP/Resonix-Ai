@@ -27,7 +27,7 @@ class VisionExplainabilityService {
    */
   generateExplanation(visionRecord = {}, hazardResult = {}, impactResult = {}, infraResult = {}, ragResult = {}) {
     const photoId = visionRecord.photoId || `photo_${Date.now()}`;
-    const disasterType = (visionRecord.disaster_type || visionRecord.visibleDisaster || 'FLOOD').toUpperCase();
+    const disasterType = (visionRecord.disaster_type || visionRecord.visibleDisaster || visionRecord.category || 'GENERAL').toUpperCase();
     const confidence = Number((visionRecord.confidence_score || visionRecord.confidence || 0.95).toFixed(2));
 
     // 1. Supporting Visual Evidence

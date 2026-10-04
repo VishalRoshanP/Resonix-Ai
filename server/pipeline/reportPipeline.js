@@ -1,5 +1,5 @@
 /**
- * Unified Emergency Report Processing Pipeline for Gemma 4 E4B
+ * Unified Emergency Report Processing Pipeline for RESONIX AI
  * Multi-input pipeline combining Voice, Image, Text, GPS, and Language into a single structured emergency object.
  */
 

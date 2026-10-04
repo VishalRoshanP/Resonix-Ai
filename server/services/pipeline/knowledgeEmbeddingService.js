@@ -86,14 +86,64 @@ class KnowledgeEmbeddingService {
     // Feature 2: Domain Keyword Semantic Boost
     const DOMAIN_SEMANICS = {
       flood: [12, 45, 88, 142, 201],
+      flooding: [12, 45, 88, 142, 201],
+      flooded: [12, 45, 88, 142, 201],
+      water: [12, 45, 88, 142, 201],
+      submerged: [12, 45, 88, 142, 201],
+      river: [12, 45, 88, 142, 201],
+      inundat: [12, 45, 88, 142, 201],
+      breach: [12, 45, 88, 142, 201],
+      water_logging: [12, 45, 88, 142, 201],
+      thanni: [12, 45, 88, 142, 201],
+      vellam: [12, 45, 88, 142, 201],
+      paani: [12, 45, 88, 142, 201],
       fire: [23, 67, 105, 189, 290],
+      nerpil: [23, 67, 105, 189, 290],
+      neruppu: [23, 67, 105, 189, 290],
+      aag: [23, 67, 105, 189, 290],
+      benki: [23, 67, 105, 189, 290],
+      manta: [23, 67, 105, 189, 290],
+      thee: [23, 67, 105, 189, 290],
       earthquake: [34, 78, 112, 210, 315],
+      bhookamp: [34, 78, 112, 210, 315],
       cyclone: [41, 82, 130, 225, 330],
+      storm: [41, 82, 130, 225, 330],
+      puyal: [41, 82, 130, 225, 330],
+      toofan: [41, 82, 130, 225, 330],
+      tufan: [41, 82, 130, 225, 330],
+      landslide: [52, 98, 148, 220, 325],
+      mudslide: [52, 98, 148, 220, 325],
+      sarivu: [52, 98, 148, 220, 325],
+      bhooskhalan: [52, 98, 148, 220, 325],
+      tsunami: [18, 59, 102, 165, 275],
+      avalanche: [29, 74, 118, 185, 295],
+      lightning: [31, 80, 126, 192, 305],
+      thunderstorm: [44, 91, 138, 215, 318],
+      duststorm: [44, 91, 138, 215, 318],
+      squall: [44, 91, 138, 215, 318],
+      heatwave: [21, 64, 109, 172, 268],
+      coldwave: [25, 69, 114, 178, 272],
+      drought: [36, 83, 128, 198, 288],
+      forest_fire: [27, 72, 116, 188, 294],
+      urban_flood: [14, 48, 92, 146, 205],
+      chemical: [40, 89, 140, 218, 322],
+      biological: [42, 93, 144, 224, 328],
+      nuclear: [46, 96, 150, 230, 336],
+      smog: [39, 87, 137, 208, 312],
       rescue: [15, 50, 95, 155, 250],
       evacuation: [28, 70, 120, 175, 280],
       firstaid: [38, 85, 135, 195, 310],
+      medical: [38, 85, 135, 195, 310],
+      ambulance: [38, 85, 135, 195, 310],
       bleeding: [42, 90, 140, 205, 320],
+      ratham: [42, 90, 140, 205, 320],
+      rath: [42, 90, 140, 205, 320],
       collapse: [55, 100, 160, 235, 340],
+      idinju: [55, 100, 160, 235, 340],
+      building_collapse: [55, 100, 160, 235, 340],
+      road_blockage: [60, 108, 155, 240, 345],
+      road_block: [60, 108, 155, 240, 345],
+      blocked: [60, 108, 155, 240, 345],
     };
 
     for (const [key, dims] of Object.entries(DOMAIN_SEMANICS)) {
@@ -271,6 +321,47 @@ class KnowledgeEmbeddingService {
     }
 
     // Sort by cosine similarity score descending
+    results.sort((a, b) => b.score - a.score);
+
+    return results.slice(0, topK);
+  }
+
+  /**
+   * Performs semantic vector search directly using an input embedding vector.
+   * @param {number[]} vector - Query embedding vector
+   * @param {number} topK - Number of top results to return (default: 5)
+   * @param {Object} filter - Optional filters: { disasterType, semanticType }
+   * @returns {Object[]} Top K matching chunks
+   */
+  searchByVector(vector, topK = 5, filter = {}) {
+    if (this.vectorIndex.size === 0) {
+      this.reindexAll();
+    }
+
+    const results = [];
+
+    for (const [chunkId, record] of this.vectorIndex.entries()) {
+      const meta = record.metadata;
+
+      if (filter.disasterType && meta.disasterType !== filter.disasterType.toUpperCase()) {
+        continue;
+      }
+
+      if (filter.semanticType && meta.semanticType !== filter.semanticType.toUpperCase()) {
+        continue;
+      }
+
+      const score = this.cosineSimilarity(vector, record.embedding);
+
+      results.push({
+        score: Number(score.toFixed(4)),
+        chunkId: record.chunkId,
+        metadata: record.metadata,
+        contentHash: record.contentHash,
+        embeddedAt: record.embeddedAt,
+      });
+    }
+
     results.sort((a, b) => b.score - a.score);
 
     return results.slice(0, topK);

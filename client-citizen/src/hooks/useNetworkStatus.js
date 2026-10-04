@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import networkConnectivityService from '../services/networkConnectivityService';
 import {
   getLocalPackets,
@@ -14,12 +14,19 @@ export function useNetworkStatus() {
   const [isSyncingQueue, setIsSyncingQueue] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState(null);
 
+  const isSyncingQueueRef = useRef(false);
+  const isMountedRef = useRef(true);
+
   // Automatically flush local packet queue when internet connectivity is restored
   const syncLocalQueueToBackend = useCallback(async () => {
+    if (isSyncingQueueRef.current) return;
     const queue = getLocalPackets();
     if (queue.length === 0) return;
 
-    setIsSyncingQueue(true);
+    isSyncingQueueRef.current = true;
+    if (isMountedRef.current) {
+      setIsSyncingQueue(true);
+    }
     let successCount = 0;
 
     for (const packet of [...queue]) {
@@ -29,11 +36,14 @@ export function useNetworkStatus() {
       }
     }
 
-    setIsSyncingQueue(false);
-    setLastSyncResult({
-      syncedCount: successCount,
-      timestamp: new Date().toISOString(),
-    });
+    isSyncingQueueRef.current = false;
+    if (isMountedRef.current) {
+      setIsSyncingQueue(false);
+      setLastSyncResult({
+        syncedCount: successCount,
+        timestamp: new Date().toISOString(),
+      });
+    }
   }, []);
 
   // Manual re-check trigger for network connection
@@ -45,18 +55,26 @@ export function useNetworkStatus() {
   }, [syncLocalQueueToBackend]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     // Subscribe to production-ready networkConnectivityService events
     const unsubscribe = networkConnectivityService.subscribe(({ isOnline: newOnlineState }) => {
-      setIsOnline(newOnlineState);
+      if (isMountedRef.current) {
+        setIsOnline(newOnlineState);
+      }
       if (newOnlineState) {
-        setRelayStatus(RELAY_STATES.IDLE);
+        if (isMountedRef.current) {
+          setRelayStatus(RELAY_STATES.IDLE);
+        }
         syncLocalQueueToBackend();
       } else {
-        setRelayStatus(RELAY_STATES.SEARCHING_FOR_RELAY);
+        if (isMountedRef.current) {
+          setRelayStatus(RELAY_STATES.SEARCHING_FOR_RELAY);
+        }
       }
     });
 
     return () => {
+      isMountedRef.current = false;
       unsubscribe();
     };
   }, [syncLocalQueueToBackend]);

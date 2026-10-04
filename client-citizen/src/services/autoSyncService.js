@@ -169,32 +169,53 @@ class AutoSyncService {
    * @param {Object} sosRecord
    * @returns {Promise<boolean>} True if server acknowledged delivery
    */
+  /**
+   * Synchronizes a single SOS message with full telemetry payload to Express backend
+   * @private
+   * @param {Object} sosRecord
+   * @returns {Promise<boolean>} True if server acknowledged delivery
+   */
   async _syncSingleSOSMessage(sosRecord) {
-    const messageId = sosRecord.messageId;
+    const messageId = sosRecord.clientEventId || sosRecord.clientRequestId || sosRecord.packetId || sosRecord.messageId;
 
     try {
       this._addLog(`Synchronizing SOS ${messageId} (Relay Count: ${sosRecord.relayCount || 0}, History Hops: ${sosRecord.relayHistory?.length || 0})...`);
+      
+      // Update report status to SYNCING
+      offlineCommunicationService.updateReportSyncStatus(messageId, 'SYNCING');
 
       // Construct comprehensive payload preserving all telemetry fields
       const syncPayload = {
-        packetId: messageId,
+        clientEventId: messageId,
+        packetId: sosRecord.packetId || messageId,
+        clientRequestId: sosRecord.clientRequestId || sosRecord.packetId || messageId,
         userId: sosRecord.userId || 'usr_guest',
-        deviceId: sosRecord.deviceId,
+        deviceId: sosRecord.deviceId || offlineCommunicationService.getDeviceId(),
         timestamp: sosRecord.timestamp,
-        description: sosRecord.emergencyText || '',
-        voiceTranscript: sosRecord.voiceTranscript || '',
-        category: 'FLOOD',
-        selectedLanguage: 'en',
+        category: sosRecord.category || sosRecord.type || sosRecord.disasterCategory || 'GENERAL',
+        citizenMessage: sosRecord.citizenMessage || sosRecord.emergencyText || sosRecord.description || '',
+        description: sosRecord.citizenMessage || sosRecord.emergencyText || sosRecord.description || sosRecord.voiceTranscript || '',
+        voiceTranscript: sosRecord.voiceTranscript || sosRecord.emergencyText || '',
+        media: sosRecord.media || [],
+        photoReference: sosRecord.photoReference || null,
+        audioReference: sosRecord.audioReference || null,
+        selectedLanguage: sosRecord.selectedLanguage || 'en',
+        location: sosRecord.location || {
+          latitude: sosRecord.latitude != null ? sosRecord.latitude : (sosRecord.gpsCoordinates?.latitude ?? null),
+          longitude: sosRecord.longitude != null ? sosRecord.longitude : (sosRecord.gpsCoordinates?.longitude ?? null),
+          address: sosRecord.address || 'GPS Location',
+        },
         gpsCoordinates: {
-          latitude: sosRecord.latitude,
-          longitude: sosRecord.longitude,
-          status: sosRecord.latitude !== null ? 'GPS_AVAILABLE' : 'GPS_UNAVAILABLE',
+          latitude: sosRecord.location?.latitude != null ? sosRecord.location.latitude : (sosRecord.latitude != null ? sosRecord.latitude : (sosRecord.gpsCoordinates?.latitude ?? null)),
+          longitude: sosRecord.location?.longitude != null ? sosRecord.location.longitude : (sosRecord.longitude != null ? sosRecord.longitude : (sosRecord.gpsCoordinates?.longitude ?? null)),
+          status: (sosRecord.location?.latitude != null || sosRecord.latitude != null) ? 'GPS_AVAILABLE' : 'GPS_UNAVAILABLE',
         },
         relayMetadata: {
           relayCount: sosRecord.relayCount || 0,
           relayHistory: sosRecord.relayHistory || [],
         },
-        deliveryStatus: sosRecord.deliveryStatus,
+        syncStatus: 'SYNCING',
+        deliveryStatus: sosRecord.deliveryStatus || 'QUEUED',
       };
 
       // Transmit to Express backend API endpoint
@@ -203,19 +224,18 @@ class AutoSyncService {
       // Verify server acknowledgement
       const isAcknowledged = Boolean(
         response &&
-          (response.status === 'success' ||
+          (response.acknowledged === true ||
+            response.status === 'success' ||
             response.statusCode === 201 ||
             response.statusCode === 200 ||
             response.data?.packet ||
+            response.data?.incidentId ||
             response.packetId)
       );
 
       if (isAcknowledged) {
-        // Mark message as DELIVERED in status
-        offlineCommunicationService.updateMessageStatus(messageId, DELIVERY_STATUS.DELIVERED);
-
-        // Remove confirmed message from local persistent storage
-        const removed = offlineCommunicationService.removeMessage(messageId);
+        // Mark message as SYNCED and remove confirmed message from local persistent storage
+        offlineCommunicationService.markReportSynced(messageId, response);
 
         // Clear retry count tracking
         this.retryAttemptsMap.delete(messageId);
@@ -232,6 +252,9 @@ class AutoSyncService {
     } catch (err) {
       this._addLog(`❌ Sync failed for SOS ${messageId}: ${err.message}. Retaining in persistent queue for auto-retry.`, 'ERROR');
       
+      // Update report status to RETRYING and record error
+      offlineCommunicationService.updateReportSyncStatus(messageId, 'RETRYING', err.message);
+
       // Schedule automatic retry with exponential backoff (Never lose an SOS)
       this._scheduleAutoRetry(sosRecord);
       return false;
@@ -241,7 +264,7 @@ class AutoSyncService {
   // --- Exponential Backoff Auto-Retry Handling ---
 
   _scheduleAutoRetry(sosRecord) {
-    const messageId = sosRecord.messageId;
+    const messageId = sosRecord.clientEventId || sosRecord.clientRequestId || sosRecord.packetId || sosRecord.messageId;
     const currentAttempts = (this.retryAttemptsMap.get(messageId) || 0) + 1;
     this.retryAttemptsMap.set(messageId, currentAttempts);
 
@@ -250,20 +273,29 @@ class AutoSyncService {
       clearTimeout(this.retryTimersMap.get(messageId));
     }
 
-    // Calculate delay with exponential backoff: 3s, 6s, 12s, 24s (capped at 30s)
-    const delayMs = Math.min(
+    // Calculate delay with exponential backoff: 3s, 6s, 12s, 24s (capped at 30s) + jitter
+    const baseDelayMs = Math.min(
       INITIAL_RETRY_DELAY_MS * Math.pow(2, currentAttempts - 1),
       MAX_RETRY_DELAY_MS
     );
+    const jitterMs = Math.floor(Math.random() * 500);
+    const delayMs = baseDelayMs + jitterMs;
 
-    this._addLog(`🔄 Scheduled auto-retry for SOS ${messageId} in ${delayMs / 1000}s (Attempt #${currentAttempts})...`, 'WARN');
+    this._addLog(`🔄 Scheduled auto-retry for SOS ${messageId} in ${(delayMs / 1000).toFixed(1)}s (Attempt #${currentAttempts})...`, 'WARN');
 
     const timer = setTimeout(() => {
       this.retryTimersMap.delete(messageId);
       if (offlineCommunicationService.isOnline()) {
         const queue = offlineCommunicationService.getPendingQueue();
-        const target = queue.find((m) => m.messageId === messageId);
-        if (target && target.deliveryStatus !== DELIVERY_STATUS.DELIVERED) {
+        const target = queue.find(
+          (m) =>
+            m.clientEventId === messageId ||
+            m.clientRequestId === messageId ||
+            m.messageId === messageId ||
+            m.packetId === messageId ||
+            m.sosId === messageId
+        );
+        if (target && target.syncStatus !== 'SYNCED' && target.deliveryStatus !== DELIVERY_STATUS.DELIVERED) {
           this._syncSingleSOSMessage(target);
         }
       }

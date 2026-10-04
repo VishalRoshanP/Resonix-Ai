@@ -1,54 +1,78 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
+import { useSettings, DEFAULT_RESPONDER_SETTINGS } from '../contexts/SettingsContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState({
-    stationCallsign: 'COMMAND-CENTER-ALPHA',
-    primarySector: 'Sector 4',
-    syncIntervalSec: '5',
-    audioAlerts: true,
-    hapticFeedback: true,
-    highContrastMode: false,
-    offlineMeshEnabled: true,
-    gemmaModel: 'google/gemma-4-e4b-it',
-    autoTriage: true,
-    language: 'English',
-  });
+  const {
+    settings,
+    saveSettings,
+    resetSettings,
+    isSaving,
+    isOnline,
+    playEmergencyAlertSound,
+  } = useSettings();
 
+  const { currentLanguage, supportedLanguages, selectLanguage, t } = useLanguage();
+
+  // Local draft state for settings form
+  const [localSettings, setLocalSettings] = useState({ ...settings });
   const [toastMsg, setToastMsg] = useState('');
+  const [showResetModal, setShowResetModal] = useState(false);
 
   const showToast = (msg) => {
     setToastMsg(msg);
-    setTimeout(() => setToastMsg(''), 2500);
+    setTimeout(() => setToastMsg(''), 3000);
   };
+
+  // Keep local draft in sync if external settings update
+  useEffect(() => {
+    setLocalSettings({ ...settings });
+  }, [settings]);
 
   const handleToggle = (key) => {
-    setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
-    showToast('Preference updated.');
+    const nextVal = !localSettings[key];
+    setLocalSettings((prev) => ({ ...prev, [key]: nextVal }));
+    saveSettings({ [key]: nextVal });
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setSettings((prev) => ({ ...prev, [name]: value }));
-    showToast('Preference updated.');
+  const handleSelect = (key, value) => {
+    setLocalSettings((prev) => ({ ...prev, [key]: value }));
+    saveSettings({ [key]: value });
+  };
+
+  const handleSave = async () => {
+    await saveSettings(localSettings);
+    showToast('Settings saved.');
+  };
+
+  const handleConfirmReset = async () => {
+    await resetSettings();
+    setLocalSettings(DEFAULT_RESPONDER_SETTINGS);
+    setShowResetModal(false);
+    showToast('Settings reset to default values.');
+  };
+
+  const getOptionButtonClass = (isSelected) => {
+    return `p-2.5 rounded-xl border flex items-center justify-center gap-1.5 font-bold transition-all cursor-pointer select-none ${
+      isSelected
+        ? 'btn-setting-selected bg-secondary text-white !text-white border-secondary shadow-xs hover:bg-secondary hover:text-white hover:!text-white focus-visible:text-white focus-visible:!text-white'
+        : 'btn-setting-unselected bg-surface-container text-primary border-outline-variant hover:bg-surface-container-high hover:text-primary'
+    }`;
   };
 
   return (
-    <div className="space-y-6 text-left animate-fade-in max-w-5xl mx-auto pb-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/60 pb-4">
-        <div>
-          <h1 className="text-2xl font-black text-primary tracking-tight">Command Center Settings</h1>
-          <p className="text-xs text-on-surface-variant mt-0.5">
-            Operational preferences, Gemma 4 AI reasoning parameters & network telemetry
-          </p>
-        </div>
-        <span className="text-xs font-mono font-bold text-secondary bg-secondary/10 px-3 py-1 rounded-full border border-secondary/30">
-          Responder v2.4.0
-        </span>
+    <div className="space-y-6 text-left animate-fade-in max-w-4xl mx-auto pb-12">
+      {/* Header Bar */}
+      <div className="border-b border-outline-variant/60 pb-4">
+        <h1 className="text-2xl font-black text-primary tracking-tight">RESPONDER SETTINGS</h1>
+        <p className="text-xs text-on-surface-variant mt-1">
+          Preferences for emergency alerts and display
+        </p>
       </div>
 
+      {/* Success Toast */}
       {toastMsg && (
         <div className="p-3 rounded-xl bg-success/15 border border-success/30 text-success font-bold text-xs flex items-center gap-2 animate-fade-in shadow-xs">
           <span className="material-symbols-outlined text-base">check_circle</span>
@@ -56,181 +80,420 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Grid of Settings Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* 1. Gemma 4 AI Intelligence Settings */}
-        <Card className="p-5 border border-outline-variant/60 space-y-4 shadow-xs">
-          <div className="flex items-center gap-2 border-b border-outline-variant/60 pb-3">
-            <div className="w-8 h-8 rounded-lg bg-secondary/15 border border-secondary/30 flex items-center justify-center text-secondary">
-              <span className="material-symbols-outlined text-lg">psychology</span>
-            </div>
-            <div>
-              <h2 className="text-sm font-extrabold text-primary uppercase tracking-wider leading-none">
-                Gemma 4 AI Engine Configuration
-              </h2>
-              <span className="text-[10px] text-on-surface-variant font-mono">Model: gemma4:e4b (Local Ollama)</span>
-            </div>
+      {/* 1. EMERGENCY ALERTS */}
+      <Card className="p-5 border border-outline-variant/60 space-y-4 shadow-sm">
+        <div className="flex items-center gap-2 border-b border-outline-variant/60 pb-3">
+          <div className="w-8 h-8 rounded-lg bg-secondary/15 border border-secondary/30 flex items-center justify-center text-secondary">
+            <span className="material-symbols-outlined text-lg">crisis_alert</span>
           </div>
-
-          <div className="space-y-1.5 text-xs">
-            <label className="font-bold text-primary block">Primary AI Model Target</label>
-            <select
-              name="gemmaModel"
-              value={settings.gemmaModel}
-              onChange={handleChange}
-              className="w-full px-3 py-2 rounded-xl bg-surface-container border border-outline-variant text-xs font-medium text-primary focus:outline-none focus:border-secondary cursor-pointer"
-            >
-              <option value="google/gemma-4-e4b-it">Gemma 4 E4B (Quantized - Fast Field Inference)</option>
-              <option value="google/gemma-4-9b-it">Gemma 4 9B (High Detail Reasoning)</option>
-            </select>
+          <div>
+            <h2 className="text-sm font-extrabold text-primary uppercase tracking-wider leading-none">
+              Emergency Alerts
+            </h2>
+            <p className="text-[11px] text-on-surface-variant mt-0.5">Audible dispatch and immediate alert preferences</p>
           </div>
+        </div>
 
-          <label className="flex items-center justify-between p-3 rounded-xl bg-surface-container border border-outline-variant cursor-pointer text-xs">
-            <div>
-              <span className="font-bold text-primary block">Automatic AI Triage & Priority</span>
-              <span className="text-[10px] text-on-surface-variant">Classify emergency reports immediately upon STT completion</span>
+        <div className="space-y-2.5 text-xs">
+          {/* Emergency Alert Sound */}
+          <label className="flex items-center justify-between p-3 rounded-xl bg-surface-container border border-outline-variant cursor-pointer transition-colors hover:bg-surface-container-high">
+            <div className="space-y-0.5">
+              <span className="font-bold text-primary block">Emergency Alert Sound</span>
+              <span className="text-[11px] text-on-surface-variant block">
+                Play a sound when a new emergency is received.
+              </span>
             </div>
-            <input
-              type="checkbox"
-              checked={settings.autoTriage}
-              onChange={() => handleToggle('autoTriage')}
-              className="w-4 h-4 rounded text-secondary focus:ring-secondary accent-secondary cursor-pointer"
-            />
-          </label>
-        </Card>
-
-        {/* 2. Station Operational Parameters */}
-        <Card className="p-5 border border-outline-variant/60 space-y-4 shadow-xs">
-          <div className="flex items-center gap-2 border-b border-outline-variant/60 pb-3">
-            <div className="w-8 h-8 rounded-lg bg-secondary/15 border border-secondary/30 flex items-center justify-center text-secondary">
-              <span className="material-symbols-outlined text-lg">tune</span>
-            </div>
-            <div>
-              <h2 className="text-sm font-extrabold text-primary uppercase tracking-wider leading-none">
-                Station Parameters
-              </h2>
-              <span className="text-[10px] text-on-surface-variant font-mono">Field Station Call Sign & Sector</span>
-            </div>
-          </div>
-
-          <div className="space-y-3 text-xs">
-            <div className="space-y-1">
-              <label className="font-bold text-primary block">Station Call Sign</label>
-              <input
-                type="text"
-                name="stationCallsign"
-                value={settings.stationCallsign}
-                onChange={handleChange}
-                className="w-full px-3 py-2 rounded-xl bg-surface-container border border-outline-variant font-mono font-bold text-primary focus:outline-none focus:border-secondary"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="font-bold text-primary block">Primary Sector Jurisdiction</label>
-              <input
-                type="text"
-                name="primarySector"
-                value={settings.primarySector}
-                onChange={handleChange}
-                className="w-full px-3 py-2 rounded-xl bg-surface-container border border-outline-variant font-bold text-primary focus:outline-none focus:border-secondary"
-              />
-            </div>
-          </div>
-        </Card>
-
-        {/* 3. Audio & Emergency Alerts */}
-        <Card className="p-5 border border-outline-variant/60 space-y-4 shadow-xs">
-          <div className="flex items-center gap-2 border-b border-outline-variant/60 pb-3">
-            <div className="w-8 h-8 rounded-lg bg-secondary/15 border border-secondary/30 flex items-center justify-center text-secondary">
-              <span className="material-symbols-outlined text-lg">volume_up</span>
-            </div>
-            <div>
-              <h2 className="text-sm font-extrabold text-primary uppercase tracking-wider leading-none">
-                Alert Tones & Dispatch Audio
-              </h2>
-              <span className="text-[10px] text-on-surface-variant font-mono">Real-time alert notifications</span>
-            </div>
-          </div>
-
-          <div className="space-y-2.5 text-xs">
-            <label className="flex items-center justify-between p-3 rounded-xl bg-surface-container border border-outline-variant cursor-pointer">
-              <div>
-                <span className="font-bold text-primary block">Critical Dispatch Alarm Tones</span>
-                <span className="text-[10px] text-on-surface-variant">Audible alert on HIGH / CRITICAL SOS packet receipt</span>
-              </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  playEmergencyAlertSound();
+                }}
+                title="Test Alert Sound"
+                className="px-2 py-1 rounded bg-surface border border-outline-variant hover:bg-surface-container-lowest text-[10px] font-bold text-secondary flex items-center gap-1 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-xs">volume_up</span>
+                <span>Test</span>
+              </button>
               <input
                 type="checkbox"
-                checked={settings.audioAlerts}
+                checked={localSettings.audioAlerts}
                 onChange={() => handleToggle('audioAlerts')}
                 className="w-4 h-4 rounded text-secondary focus:ring-secondary accent-secondary cursor-pointer"
               />
-            </label>
-
-            <label className="flex items-center justify-between p-3 rounded-xl bg-surface-container border border-outline-variant cursor-pointer">
-              <div>
-                <span className="font-bold text-primary block">Haptic Dispatch Pulses</span>
-                <span className="text-[10px] text-on-surface-variant">Vibrate mobile & field tablet on status update</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={settings.hapticFeedback}
-                onChange={() => handleToggle('hapticFeedback')}
-                className="w-4 h-4 rounded text-secondary focus:ring-secondary accent-secondary cursor-pointer"
-              />
-            </label>
-          </div>
-        </Card>
-
-        {/* 4. Network Telemetry & Offline Mesh */}
-        <Card className="p-5 border border-outline-variant/60 space-y-4 shadow-xs">
-          <div className="flex items-center gap-2 border-b border-outline-variant/60 pb-3">
-            <div className="w-8 h-8 rounded-lg bg-secondary/15 border border-secondary/30 flex items-center justify-center text-secondary">
-              <span className="material-symbols-outlined text-lg">hub</span>
             </div>
+          </label>
+
+          {/* Critical Alert Notifications */}
+          <label className="flex items-center justify-between p-3 rounded-xl bg-surface-container border border-outline-variant cursor-pointer transition-colors hover:bg-surface-container-high">
+            <div className="space-y-0.5">
+              <span className="font-bold text-primary block">Critical Alert Notifications</span>
+              <span className="text-[11px] text-on-surface-variant block">
+                Highlight critical emergencies immediately.
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              checked={localSettings.criticalAlerts}
+              onChange={() => handleToggle('criticalAlerts')}
+              className="w-4 h-4 rounded text-secondary focus:ring-secondary accent-secondary cursor-pointer shrink-0"
+            />
+          </label>
+
+          {/* Vibration Alerts */}
+          <label className="flex items-center justify-between p-3 rounded-xl bg-surface-container border border-outline-variant cursor-pointer transition-colors hover:bg-surface-container-high">
+            <div className="space-y-0.5">
+              <span className="font-bold text-primary block">Vibration Alerts</span>
+              <span className="text-[11px] text-on-surface-variant block">
+                Vibrate when an important emergency update arrives.
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              checked={localSettings.vibrationAlerts}
+              onChange={() => handleToggle('vibrationAlerts')}
+              className="w-4 h-4 rounded text-secondary focus:ring-secondary accent-secondary cursor-pointer shrink-0"
+            />
+          </label>
+        </div>
+      </Card>
+
+      {/* 2. CONNECTION & OFFLINE SUPPORT */}
+      <Card className="p-5 border border-outline-variant/60 space-y-4 shadow-sm">
+        <div className="flex items-center gap-2 border-b border-outline-variant/60 pb-3">
+          <div className="w-8 h-8 rounded-lg bg-secondary/15 border border-secondary/30 flex items-center justify-center text-secondary">
+            <span className="material-symbols-outlined text-lg">wifi</span>
+          </div>
+          <div>
+            <h2 className="text-sm font-extrabold text-primary uppercase tracking-wider leading-none">
+              Connection & Offline Support
+            </h2>
+            <p className="text-[11px] text-on-surface-variant mt-0.5">Network connectivity and background synchronization</p>
+          </div>
+        </div>
+
+        <div className="space-y-2.5 text-xs">
+          {/* Real Connection Status Indicator */}
+          <div className="p-3 rounded-xl bg-surface-container border border-outline-variant flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-extrabold text-primary uppercase tracking-wider leading-none">
-                Network & Offline Mesh Sync
-              </h2>
-              <span className="text-[10px] text-on-surface-variant font-mono">BLE / Wi-Fi Direct Peer Relay</span>
+              <span className="font-bold text-primary block">Connection</span>
+              <span className="text-[11px] text-on-surface-variant block">
+                Real-time operational network state
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface border border-outline-variant font-mono text-xs font-bold">
+              <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+              <span className={isOnline ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}>
+                {isOnline ? 'Connected' : 'Offline'}
+              </span>
             </div>
           </div>
 
-          <div className="space-y-2.5 text-xs">
-            <label className="flex items-center justify-between p-3 rounded-xl bg-surface-container border border-outline-variant cursor-pointer">
-              <div>
-                <span className="font-bold text-primary block">Offline Mesh Node Relay</span>
-                <span className="text-[10px] text-on-surface-variant">Accept & relay multi-hop packet telemetry from citizen nodes</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={settings.offlineMeshEnabled}
-                onChange={() => handleToggle('offlineMeshEnabled')}
-                className="w-4 h-4 rounded text-secondary focus:ring-secondary accent-secondary cursor-pointer"
-              />
-            </label>
+          {/* Offline Emergency Relay */}
+          <label className="flex items-center justify-between p-3 rounded-xl bg-surface-container border border-outline-variant cursor-pointer transition-colors hover:bg-surface-container-high">
+            <div className="space-y-0.5 pr-3">
+              <span className="font-bold text-primary block">Offline Emergency Relay</span>
+              <span className="text-[11px] text-on-surface-variant block">
+                Store emergency data when connection is unavailable and sync when connection returns.
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              checked={localSettings.offlineRelay}
+              onChange={() => handleToggle('offlineRelay')}
+              className="w-4 h-4 rounded text-secondary focus:ring-secondary accent-secondary cursor-pointer shrink-0"
+            />
+          </label>
+        </div>
+      </Card>
 
-            <div className="space-y-1">
-              <label className="font-bold text-primary block">Telemetry Sync Interval (seconds)</label>
-              <select
-                name="syncIntervalSec"
-                value={settings.syncIntervalSec}
-                onChange={handleChange}
-                className="w-full px-3 py-2 rounded-xl bg-surface-container border border-outline-variant font-mono font-bold text-primary focus:outline-none focus:border-secondary cursor-pointer"
-              >
-                <option value="3">3 Seconds (High Frequency Field Radar)</option>
-                <option value="5">5 Seconds (Standard Command Center)</option>
-                <option value="10">10 Seconds (Low Power Mesh Mode)</option>
-              </select>
+      {/* 3. DISPLAY */}
+      <Card className="p-5 border border-outline-variant/60 space-y-4 shadow-sm">
+        <div className="flex items-center gap-2 border-b border-outline-variant/60 pb-3">
+          <div className="w-8 h-8 rounded-lg bg-secondary/15 border border-secondary/30 flex items-center justify-center text-secondary">
+            <span className="material-symbols-outlined text-lg">palette</span>
+          </div>
+          <div>
+            <h2 className="text-sm font-extrabold text-primary uppercase tracking-wider leading-none">
+              Display
+            </h2>
+            <p className="text-[11px] text-on-surface-variant mt-0.5">Interface theme, font size, and contrast mode</p>
+          </div>
+        </div>
+
+        <div className="space-y-3.5 text-xs">
+          {/* Interface Theme */}
+          <div className="space-y-1.5">
+            <label className="font-bold text-primary block">Interface Theme</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: 'light', label: 'Light', icon: 'light_mode' },
+                { id: 'dark', label: 'Dark', icon: 'dark_mode' },
+                { id: 'system', label: 'System', icon: 'desktop_windows' },
+              ].map((th) => {
+                const isSelected = localSettings.theme === th.id;
+                return (
+                  <button
+                    key={th.id}
+                    type="button"
+                    onClick={() => handleSelect('theme', th.id)}
+                    className={getOptionButtonClass(isSelected)}
+                  >
+                    <span className={`material-symbols-outlined text-sm ${isSelected ? 'text-white !text-white' : 'text-on-surface-variant'}`}>
+                      {th.icon}
+                    </span>
+                    <span className={isSelected ? 'text-white !text-white font-black' : 'text-primary'}>
+                      {th.label}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
-        </Card>
+
+          {/* Text Size */}
+          <div className="space-y-1.5">
+            <label className="font-bold text-primary block">Text Size</label>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { id: 'normal', label: 'Normal' },
+                { id: 'large', label: 'Large' },
+              ].map((fs) => {
+                const isSelected = localSettings.fontSize === fs.id;
+                return (
+                  <button
+                    key={fs.id}
+                    type="button"
+                    onClick={() => handleSelect('fontSize', fs.id)}
+                    className={getOptionButtonClass(isSelected)}
+                  >
+                    <span className={isSelected ? 'text-white !text-white font-black' : 'text-primary'}>
+                      {fs.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* High Contrast */}
+          <div className="space-y-1.5">
+            <label className="font-bold text-primary block">High Contrast</label>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { val: false, label: 'OFF' },
+                { val: true, label: 'ON' },
+              ].map((hc) => {
+                const isSelected = localSettings.highContrast === hc.val;
+                return (
+                  <button
+                    key={String(hc.val)}
+                    type="button"
+                    onClick={() => handleSelect('highContrast', hc.val)}
+                    className={getOptionButtonClass(isSelected)}
+                  >
+                    <span className={isSelected ? 'text-white !text-white font-black' : 'text-primary'}>
+                      {hc.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* 4. LANGUAGE PREFERENCES */}
+      <Card className="p-5 border border-outline-variant/60 space-y-4 shadow-sm">
+        <div className="flex items-center gap-2 border-b border-outline-variant/60 pb-3">
+          <div className="w-8 h-8 rounded-lg bg-secondary/15 border border-secondary/30 flex items-center justify-center text-secondary">
+            <span className="material-symbols-outlined text-lg">language</span>
+          </div>
+          <div>
+            <h2 className="text-sm font-extrabold text-primary uppercase tracking-wider leading-none">
+              Language Preferences
+            </h2>
+            <p className="text-[11px] text-on-surface-variant mt-0.5">
+              Select interface language with authentic regional translations
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-4 text-xs">
+          {/* Prioritized Regional Languages */}
+          <div>
+            <span className="text-[11px] font-bold text-secondary uppercase tracking-wider block mb-2">
+              Primary Regional Languages
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {supportedLanguages
+                .filter((l) => l.isPriority)
+                .map((lang) => {
+                  const isSelected = currentLanguage === lang.code;
+                  return (
+                    <button
+                      key={lang.code}
+                      type="button"
+                      onClick={() => {
+                        selectLanguage(lang.code);
+                        showToast(`Language set to ${lang.name} (${lang.nativeName})`);
+                      }}
+                      className={getOptionButtonClass(isSelected)}
+                    >
+                      <span className="text-base">{lang.flag}</span>
+                      <span className="font-extrabold text-sm">{lang.nativeName}</span>
+                      <span className="text-[10px] opacity-80">({lang.name})</span>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* Other Supported Indian Regional Languages */}
+          <div className="pt-2 border-t border-outline-variant/40">
+            <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block mb-2">
+              Other Supported Languages
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+              {supportedLanguages
+                .filter((l) => !l.isPriority)
+                .map((lang) => {
+                  const isSelected = currentLanguage === lang.code;
+                  return (
+                    <button
+                      key={lang.code}
+                      type="button"
+                      onClick={() => {
+                        selectLanguage(lang.code);
+                        showToast(`Language set to ${lang.name} (${lang.nativeName})`);
+                      }}
+                      className={getOptionButtonClass(isSelected)}
+                    >
+                      <span className="font-extrabold">{lang.nativeName}</span>
+                      <span className="text-[10px] opacity-80">({lang.name})</span>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* 5. NOTIFICATIONS */}
+      <Card className="p-5 border border-outline-variant/60 space-y-4 shadow-sm">
+        <div className="flex items-center gap-2 border-b border-outline-variant/60 pb-3">
+          <div className="w-8 h-8 rounded-lg bg-secondary/15 border border-secondary/30 flex items-center justify-center text-secondary">
+            <span className="material-symbols-outlined text-lg">notifications</span>
+          </div>
+          <div>
+            <h2 className="text-sm font-extrabold text-primary uppercase tracking-wider leading-none">
+              Notifications
+            </h2>
+            <p className="text-[11px] text-on-surface-variant mt-0.5">Control which event notifications appear on the dashboard</p>
+          </div>
+        </div>
+
+        <div className="space-y-2.5 text-xs">
+          {/* New Emergency Alerts */}
+          <label className="flex items-center justify-between p-3 rounded-xl bg-surface-container border border-outline-variant cursor-pointer transition-colors hover:bg-surface-container-high">
+            <span className="font-bold text-primary">New Emergency Alerts</span>
+            <input
+              type="checkbox"
+              checked={localSettings.newEmergencyAlerts}
+              onChange={() => handleToggle('newEmergencyAlerts')}
+              className="w-4 h-4 rounded text-secondary focus:ring-secondary accent-secondary cursor-pointer shrink-0"
+            />
+          </label>
+
+          {/* Emergency Status Updates */}
+          <label className="flex items-center justify-between p-3 rounded-xl bg-surface-container border border-outline-variant cursor-pointer transition-colors hover:bg-surface-container-high">
+            <span className="font-bold text-primary">Emergency Status Updates</span>
+            <input
+              type="checkbox"
+              checked={localSettings.statusUpdates}
+              onChange={() => handleToggle('statusUpdates')}
+              className="w-4 h-4 rounded text-secondary focus:ring-secondary accent-secondary cursor-pointer shrink-0"
+            />
+          </label>
+
+          {/* Rescue Completion Alerts */}
+          <label className="flex items-center justify-between p-3 rounded-xl bg-surface-container border border-outline-variant cursor-pointer transition-colors hover:bg-surface-container-high">
+            <span className="font-bold text-primary">Rescue Completion Alerts</span>
+            <input
+              type="checkbox"
+              checked={localSettings.rescueCompletionAlerts}
+              onChange={() => handleToggle('rescueCompletionAlerts')}
+              className="w-4 h-4 rounded text-secondary focus:ring-secondary accent-secondary cursor-pointer shrink-0"
+            />
+          </label>
+        </div>
+      </Card>
+
+      {/* Actions: Save Settings & Reset to Default */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+        <Button
+          variant="primary"
+          size="md"
+          icon="save"
+          onClick={handleSave}
+          loading={isSaving}
+          className="font-extrabold px-6 shadow-md"
+        >
+          {t('btn_save_changes', 'Save Settings')}
+        </Button>
+
+        <button
+          type="button"
+          onClick={() => setShowResetModal(true)}
+          className="text-xs font-bold text-on-surface-variant hover:text-error transition-colors cursor-pointer flex items-center gap-1 px-3 py-2 rounded-lg hover:bg-surface-container"
+        >
+          <span className="material-symbols-outlined text-sm">restart_alt</span>
+          <span>Reset to Default</span>
+        </button>
       </div>
 
-      {/* Footer System Meta */}
-      <Card className="p-4 border border-outline-variant/60 text-center text-xs text-on-surface-variant space-y-1">
-        <p className="font-bold text-primary">RESONIX AI Responder Command Center</p>
-        <p className="text-[10px] font-mono">Port 5174 • Node ID: cmd_alpha_01 • Build: 2026.07.31-prod</p>
-      </Card>
+      {/* Confirmation Dialog Modal for Reset */}
+      {showResetModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in text-left">
+          <Card className="bg-surface border border-outline-variant max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 border-b border-outline-variant/60 pb-3">
+              <div className="w-10 h-10 rounded-xl bg-error/15 border border-error/30 flex items-center justify-center text-error shrink-0">
+                <span className="material-symbols-outlined text-2xl">restart_alt</span>
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-primary leading-tight">Reset Settings?</h3>
+                <p className="text-[11px] text-on-surface-variant">Restore application defaults</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-primary font-medium leading-relaxed">
+              Reset all responder settings to their default values?
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowResetModal(false)}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+
+              <Button
+                variant="urgent"
+                size="sm"
+                onClick={handleConfirmReset}
+                className="text-xs font-bold px-4"
+              >
+                Reset
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

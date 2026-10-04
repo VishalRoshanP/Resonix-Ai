@@ -28,7 +28,7 @@ const explainableAiRecordSchema = new mongoose.Schema(
     medicalExplanation: { type: String, default: '' },
     hazardsExplanation: { type: String, default: '' },
     fieldRationales: { type: Object, default: {} },
-    gemmaModel: { type: String, default: 'google/gemma-4-e4b-it' },
+    gemmaModel: { type: String, default: 'resonix-disaster-intelligence' },
     generatedAt: { type: Date, default: Date.now },
   },
   {

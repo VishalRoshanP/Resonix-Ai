@@ -10,10 +10,22 @@ const variantStyles = {
 };
 
 export default function StatusChip({ label, variant = 'info', className, dot = false }) {
+  const displayLabel = (() => {
+    if (!label) return '';
+    const s = String(label).toLowerCase();
+    if (variant === 'critical' || s === 'critical') {
+      return (String(label).includes('🔴') || s.includes('warning')) ? label : `🔴 ${String(label).toUpperCase()} WARNING`;
+    }
+    if (variant === 'warning' || s === 'warning') {
+      return (String(label).includes('🟠') || s.includes('warning') || s.includes('advisory')) ? label : `🟠 ${String(label).toUpperCase()}`;
+    }
+    return label;
+  })();
+
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 px-2 py-1 rounded-sm text-label-sm uppercase font-bold text-[10px] tracking-wider',
+        'inline-flex items-center gap-1.5 px-2 py-1 rounded-sm text-label-sm uppercase font-black text-[10px] tracking-wider',
         variantStyles[variant],
         className
       )}
@@ -31,7 +43,7 @@ export default function StatusChip({ label, variant = 'info', className, dot = f
           )}
         />
       )}
-      {label}
+      {displayLabel}
     </span>
   );
 }

@@ -2,11 +2,11 @@ import { cn } from '../../utils/helpers';
 
 export default function Button({ children, variant = 'primary', size = 'md', className, icon, loading, ...props }) {
   const variants = {
-    primary: 'bg-primary text-white hover:bg-black',
-    secondary: 'bg-surface-container text-primary hover:bg-surface-container-high border border-outline-variant/60',
-    urgent: 'bg-secondary text-white hover:bg-opacity-90 shadow-sm',
+    primary: 'bg-[#1b1c1d] text-white hover:bg-black dark:bg-secondary dark:hover:bg-secondary/85',
+    secondary: 'bg-surface-container text-on-surface hover:bg-surface-container-high border border-outline-variant/60',
+    urgent: 'bg-secondary text-white hover:bg-secondary/85 shadow-sm',
     danger: 'bg-error text-white hover:bg-error/90 shadow-sm font-extrabold',
-    ghost: 'bg-transparent text-primary hover:bg-surface-container-low',
+    ghost: 'bg-transparent text-on-surface hover:bg-surface-container-low',
   };
 
   const sizes = {

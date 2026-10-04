@@ -4,11 +4,42 @@ import { useLanguage } from '../contexts/LanguageContext';
 import LocationDetectorWidget from '../components/location/LocationDetectorWidget';
 import NetworkStatusWidget from '../components/network/NetworkStatusWidget';
 import EmergencyReportModal from '../components/emergency/EmergencyReportModal';
+import EmergencyAcknowledgementModal, { isIncidentAcknowledged, markIncidentAcknowledged } from '../components/emergency/EmergencyAcknowledgementModal';
 
 export default function CitizenHomePage() {
   const navigate = useNavigate();
   const { activeLanguageObj } = useLanguage();
   const [showReportModal, setShowReportModal] = useState(false);
+  const [acknowledgementData, setAcknowledgementData] = useState(null);
+  const [showAcknowledgementModal, setShowAcknowledgementModal] = useState(false);
+
+  const handleSubmitted = (packet, responseResult = {}) => {
+    const isOnlineSuccess = Boolean(responseResult?.isOnlineSuccess);
+    const alertId =
+      responseResult?.data?.packetId ||
+      responseResult?.packetId ||
+      responseResult?.data?.data?._id ||
+      packet?.clientRequestId ||
+      packet?.packetId;
+
+    const locationText =
+      packet?.gpsCoordinates?.latitude != null
+        ? `GPS: ${packet.gpsCoordinates.latitude.toFixed(4)}, ${packet.gpsCoordinates.longitude.toFixed(4)}`
+        : packet?.incidentMetadata?.sector || packet?.sector || 'Live Telemetry Sector';
+
+    if (isOnlineSuccess) {
+      if (!isIncidentAcknowledged(alertId)) {
+        markIncidentAcknowledged(alertId);
+        setAcknowledgementData({
+          alertId,
+          status: 'ACTIVE',
+          location: locationText,
+          category: packet?.category || 'EMERGENCY',
+        });
+        setShowAcknowledgementModal(true);
+      }
+    }
+  };
 
   return (
     <div className="max-w-md mx-auto min-h-[calc(100vh-5rem)] flex flex-col justify-between p-3 sm:p-4 text-center animate-fade-in space-y-4">
@@ -79,6 +110,17 @@ export default function CitizenHomePage() {
       <EmergencyReportModal
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
+        onSubmitted={handleSubmitted}
+      />
+
+      {/* Citizen SOS Acknowledgement Modal */}
+      <EmergencyAcknowledgementModal
+        isOpen={showAcknowledgementModal}
+        onClose={() => {
+          setShowAcknowledgementModal(false);
+          setAcknowledgementData(null);
+        }}
+        data={acknowledgementData}
       />
     </div>
   );

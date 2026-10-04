@@ -1,5 +1,5 @@
 /**
- * Priority & Resource Allocation Pipeline for Gemma 4 E4B
+ * Priority & Resource Allocation Pipeline for RESONIX AI
  * Multi-step pipeline that evaluates emergency priority, calculates optimal resource dispatch,
  * and generates transparent decision explanations.
  */

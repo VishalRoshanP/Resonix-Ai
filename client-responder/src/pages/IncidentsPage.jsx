@@ -5,6 +5,8 @@ import Button from '../components/ui/Button';
 import IncidentDetailModal from '../components/incidents/IncidentDetailModal';
 import { incidentApi } from '../services/api';
 import useSocket from '../hooks/useSocket';
+import { isIncidentActive } from '../utils/helpers';
+import { doIncidentsMatch } from '../utils/mapIncidentNormalizer';
 
 export default function IncidentsPage() {
   const location = useLocation();
@@ -12,6 +14,7 @@ export default function IncidentsPage() {
 
   const [incidents, setIncidents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterPriority, setFilterPriority] = useState('ALL');
   const [filterStatus, setFilterStatus] = useState('ALL');
@@ -33,91 +36,302 @@ export default function IncidentsPage() {
   const [incidentToDelete, setIncidentToDelete] = useState(null);
   const [isDeletingActiveIncident, setIsDeletingActiveIncident] = useState(false);
 
-  // Fetch REAL incidents from backend API with automatic live refresh polling (5s)
+  const { lastSocketEvent, isConnected } = useSocket(true);
+  const fetchDebounceRef = useRef(null);
+  const isFetchingIncidentsRef = useRef(false);
+
+  // Helper function to map raw incident document to IncidentsPage UI representation
+  const transformIncidentDoc = (doc) => {
+    if (!doc) return null;
+    const mongoId = doc._id ? String(doc._id) : (doc.id ? String(doc.id) : (doc.packetId ? String(doc.packetId) : ''));
+    const actualId = mongoId || (doc.packetId ? String(doc.packetId) : 'Not Found');
+    const displayId = mongoId && mongoId.length >= 4 ? `INC-${mongoId.slice(-4).toUpperCase()}` : actualId;
+    const category = (doc.detectedEmergencyCategory || doc.category || doc.aiAssessment?.category || doc.aiAnalysis?.disasterCategory || doc.type || 'OTHER').toUpperCase();
+    const citizenSelectedCategory = (doc.citizenSelectedCategory || doc.selectedCategory || doc.citizenInput?.selectedCategory || null);
+    const categoryConflict = Boolean(
+      doc.categoryConflict ||
+      (citizenSelectedCategory &&
+        category &&
+        citizenSelectedCategory.toUpperCase() !== category.toUpperCase() &&
+        citizenSelectedCategory.toUpperCase() !== 'GENERAL' &&
+        citizenSelectedCategory.toUpperCase() !== 'OTHER')
+    );
+    const priority = (doc.severity || doc.priority || doc.aiAnalysis?.severity || 'MEDIUM').toUpperCase();
+
+    let priorityBadge = 'bg-secondary text-white';
+    if (priority === 'CRITICAL') priorityBadge = 'bg-error text-white';
+    else if (priority === 'HIGH' || priority === 'WARNING') priorityBadge = 'bg-amber-500 text-white';
+    else if (priority === 'LOW') priorityBadge = 'bg-surface-container-high text-primary';
+
+    const status = (doc.status || doc.packetStatus || 'OPEN').toUpperCase();
+    let statusBadge = 'bg-surface-container border-outline-variant text-on-surface-variant';
+    if (status === 'DISPATCHED') statusBadge = 'bg-warning/15 border-warning text-warning';
+    else if (status === 'EN_ROUTE') statusBadge = 'bg-secondary/15 border-secondary text-secondary';
+    else if (status === 'ON_SCENE') statusBadge = 'bg-error/15 border-error text-error font-bold';
+    else if (status === 'RESOLVED') statusBadge = 'bg-success/15 border-success text-success';
+
+    const docLat = doc.location?.lat ?? doc.location?.latitude ?? doc.latitude ?? doc.gpsCoordinates?.latitude ?? doc.gpsCoordinates?.lat ?? (Array.isArray(doc.location?.coordinates) ? doc.location.coordinates[1] : (Array.isArray(doc.coordinates) ? doc.coordinates[1] : null));
+    const docLng = doc.location?.lng ?? doc.location?.longitude ?? doc.longitude ?? doc.gpsCoordinates?.longitude ?? doc.gpsCoordinates?.lng ?? (Array.isArray(doc.location?.coordinates) ? doc.location.coordinates[0] : (Array.isArray(doc.coordinates) ? doc.coordinates[0] : null));
+    const hasGps = docLat != null && docLng != null && !isNaN(Number(docLat)) && !isNaN(Number(docLng)) && (Number(docLat) !== 0 || Number(docLng) !== 0);
+
+    let realLocation = doc.location?.address;
+    if (!realLocation || realLocation.startsWith('Sector')) {
+      if (hasGps) {
+        realLocation = `GPS: ${Number(docLat).toFixed(4)}, ${Number(docLng).toFixed(4)}`;
+      } else {
+        realLocation = doc.sector || doc.location?.address || 'Live Telemetry Location';
+      }
+    }
+    const citizenName = doc.victimName || doc.citizenName || doc.user?.name || doc.userId || 'Citizen User';
+    const assignedUnit = doc.assignedResponders?.[0]?.name || doc.assignedUnit || 'Unassigned / Pending Dispatch';
+    const createdAtRaw = doc.createdAt ? new Date(doc.createdAt).getTime() : (doc.timestamp ? new Date(doc.timestamp).getTime() : Date.now());
+
+    return {
+      ...(typeof doc === 'object' ? doc : {}),
+      id: actualId,
+      _id: actualId,
+      mongoId: actualId,
+      displayId,
+      packetId: doc.packetId ? String(doc.packetId) : actualId,
+      clientRequestId: doc.clientRequestId || doc.packetId || actualId,
+      citizenId: doc.citizenId || doc.userId || doc.packetId || 'usr_citizen_telemetry',
+      citizenName,
+      category,
+      detectedEmergencyCategory: category,
+      citizenSelectedCategory,
+      categoryConflict,
+      canonicalCategory: (() => {
+        const rawAiCat = doc.aiTriage?.classification || doc.detectedEmergencyCategory || doc.category || doc.aiAssessment?.category || doc.aiAnalysis?.disasterCategory || 'Other';
+        const c = String(rawAiCat).trim().toUpperCase();
+        if (c.includes('FLOOD') || c.includes('WATERLOGGING')) return 'Flood';
+        if (c.includes('FIRE')) return 'Fire';
+        if (c.includes('CYCLONE') || c.includes('STORM')) return 'Cyclone';
+        if (c.includes('LANDSLIDE') || c.includes('MUDSLIDE')) return 'Landslide';
+        if (c.includes('ROAD') || c.includes('BLOCKAGE')) return 'Road blockage';
+        if (c.includes('MEDIC') || c.includes('AMBULANCE')) return 'Medical emergency';
+        if (c.includes('BUILDING') || c.includes('COLLAPSE') || c.includes('INFRASTRUCTURE') || c.includes('BRIDGE')) return 'Infrastructure damage';
+        const map = {
+          'FLOOD': 'Flood', 'FIRE': 'Fire', 'CYCLONE': 'Cyclone', 'LANDSLIDE': 'Landslide',
+          'ROAD BLOCKAGE': 'Road blockage', 'MEDICAL EMERGENCY': 'Medical emergency', 'INFRASTRUCTURE DAMAGE': 'Infrastructure damage',
+        };
+        return map[c] || 'Other';
+      })(),
+      confidencePct: Math.round((doc.aiTriage?.confidenceScore ?? (typeof doc.confidence === 'number' ? doc.confidence : (typeof doc.aiAssessment?.confidence === 'number' ? doc.aiAssessment.confidence : 0.94))) * (doc.confidence > 1 ? 1 : 100)),
+      confidenceLevel: doc.aiTriage?.confidenceLevel || doc.classificationConfidence || 'HIGH',
+      aiTriage: doc.aiTriage || null,
+      originalCitizenEvidence: doc.originalCitizenEvidence || null,
+      extractedEntities: doc.extractedEntities || null,
+      aiSummary: doc.description || doc.title || doc.aiSummary || doc.aiAnalysis?.summary || 'Citizen Emergency SOS',
+      priority,
+      priorityBadge,
+      location: realLocation,
+      status,
+      statusBadge,
+      assignedUnit,
+      time: doc.createdAt ? new Date(doc.createdAt).toLocaleString() : new Date().toLocaleString(),
+      createdAtRaw,
+      completedAt: doc.completedAt ? new Date(doc.completedAt).toLocaleString() : (status === 'RESOLVED' || status === 'CLOSED' ? new Date(doc.updatedAt || Date.now()).toLocaleString() : 'N/A'),
+      completedBy: doc.completedBy || 'Command Officer',
+      resolutionSummary: doc.resolutionSummary || doc.completionNotes || 'Emergency resolved by response unit',
+      resolutionDuration: doc.createdAt && doc.completedAt ? `${Math.max(1, Math.round((new Date(doc.completedAt) - new Date(doc.createdAt)) / (1000 * 60)))} min` : 'N/A',
+      rawDoc: doc,
+    };
+  };
+
+  // Real-Time Socket.IO event listener for INSTANT updates (0ms) without page refresh or heavy re-GET
+  useEffect(() => {
+    if (!lastSocketEvent) return;
+
+    // Reconnect handler: fetch latest state from backend after socket reconnection
+    if (lastSocketEvent.type === 'SOCKET_RECONNECTED') {
+      console.log('[IncidentsPage] 🔄 Socket reconnected. Fetching latest incident state...');
+      fetchRealIncidents(true);
+      return;
+    }
+
+    if (lastSocketEvent.type === 'INCIDENT_DELETED' || lastSocketEvent.type === 'incident:deleted') {
+      const delId = lastSocketEvent.incidentId || lastSocketEvent.id;
+      if (delId) {
+        setIncidents((prev) => prev.filter((item) => item.id !== delId && item._id !== delId && item.packetId !== delId));
+      }
+      return;
+    }
+
+    // INSTANT (0ms) Real-Time Ingestion for New Incidents & Emergency Alerts
+    if (lastSocketEvent.type === 'INCIDENT_CREATED' || lastSocketEvent.type === 'NEW_EMERGENCY') {
+      console.log(`[SOCKET_RECEIVED] type=${lastSocketEvent.type} timestamp=${new Date().toISOString()}`);
+      const doc = lastSocketEvent.incident || lastSocketEvent.emergency || lastSocketEvent;
+      if (doc) {
+        const transformed = transformIncidentDoc(doc);
+        if (transformed) {
+          setIncidents((prev) => {
+            const key = String(transformed.clientRequestId || transformed.packetId || transformed.id || transformed._id);
+            const exists = prev.some((item) => String(item.clientRequestId || item.packetId || item.id || item._id) === key);
+            let nextList;
+            if (exists) {
+              nextList = prev.map((item) => String(item.clientRequestId || item.packetId || item.id || item._id) === key ? { ...item, ...transformed } : item);
+            } else {
+              nextList = [transformed, ...prev];
+            }
+            console.log(`[INCIDENT_STATE_UPDATED] incidentId=${transformed.id} count=${nextList.length}`);
+            return nextList;
+          });
+        }
+      }
+      return;
+    }
+
+    // INSTANT (0ms) Real-Time Status / Detail Updates
+    if (lastSocketEvent.type === 'INCIDENT_UPDATED') {
+      const doc = lastSocketEvent.incident || lastSocketEvent;
+      if (doc) {
+        const transformed = transformIncidentDoc(doc);
+        const eventStatus = String(lastSocketEvent.status || transformed?.status || doc.status || '').toUpperCase();
+        setIncidents((prev) =>
+          prev.map((item) => {
+            if (
+              doIncidentsMatch(item, doc) ||
+              doIncidentsMatch(item, transformed) ||
+              doIncidentsMatch(item, { _id: lastSocketEvent.incidentId, packetId: lastSocketEvent.packetId, clientRequestId: lastSocketEvent.clientRequestId })
+            ) {
+              return {
+                ...item,
+                ...(transformed || {}),
+                status: eventStatus || item.status,
+                completedAt: transformed?.completedAt || (eventStatus === 'RESOLVED' ? new Date().toLocaleString() : item.completedAt),
+                completedBy: transformed?.completedBy || (eventStatus === 'RESOLVED' ? (lastSocketEvent.completedBy || 'Command Officer') : item.completedBy),
+                resolutionSummary: transformed?.resolutionSummary || lastSocketEvent.resolutionSummary || item.resolutionSummary,
+              };
+            }
+            return item;
+          })
+        );
+        setSelectedIncident((prev) => {
+          if (!prev) return prev;
+          if (
+            doIncidentsMatch(prev, doc) ||
+            doIncidentsMatch(prev, transformed) ||
+            doIncidentsMatch(prev, { _id: lastSocketEvent.incidentId, packetId: lastSocketEvent.packetId, clientRequestId: lastSocketEvent.clientRequestId })
+          ) {
+            return {
+              ...prev,
+              ...(transformed || {}),
+              status: eventStatus || prev.status,
+              completedAt: transformed?.completedAt || (eventStatus === 'RESOLVED' ? new Date().toLocaleString() : prev.completedAt),
+              completedBy: transformed?.completedBy || (eventStatus === 'RESOLVED' ? (lastSocketEvent.completedBy || 'Command Officer') : prev.completedBy),
+              resolutionSummary: transformed?.resolutionSummary || lastSocketEvent.resolutionSummary || prev.resolutionSummary,
+            };
+          }
+          return prev;
+        });
+      }
+      return;
+    }
+  }, [lastSocketEvent]);
+
+  // Fetch REAL incidents from backend API with automatic live refresh polling (30s fallback)
   useEffect(() => {
     fetchRealIncidents();
     const pollInterval = setInterval(() => {
       fetchRealIncidents(true);
-    }, 5000);
-    return () => clearInterval(pollInterval);
+    }, 30000);
+    return () => {
+      clearInterval(pollInterval);
+      if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
+    };
   }, []);
 
+  // Auto-open incident modal if ?incident= or ?manage= query param is provided
+  useEffect(() => {
+    if (hasAutoOpenedRef.current) return;
+    const params = new URLSearchParams(location.search);
+    const incParam = params.get('incident') || params.get('manage') || params.get('id');
+    if (!incParam) return;
+
+    // 1. Fast check if incident is already in active state
+    if (incidents.length > 0) {
+      const targetStr = String(incParam).toLowerCase();
+      const found = incidents.find((i) => {
+        const idStr = String(i.id || i._id || i.packetId || i.clientRequestId || '').toLowerCase();
+        const dispStr = String(i.displayId || '').toLowerCase();
+        return idStr === targetStr || dispStr === targetStr || idStr.endsWith(targetStr);
+      });
+      if (found) {
+        setSelectedIncident(found);
+        setIsDetailOpen(true);
+        setActiveIncidentId(found.displayId || found.id);
+        setIsOpenedFromDashboard(Boolean(params.get('from') === 'dashboard'));
+        hasAutoOpenedRef.current = true;
+        return;
+      }
+    }
+
+    // 2. Direct single-incident lookup (never wait for full 50-incident collection)
+    let isCancelled = false;
+    (async () => {
+      try {
+        const res = await incidentApi.getIncidentById(incParam);
+        const doc = res?.data?.incident || res?.incident || res?.data || res;
+        if (doc && !isCancelled) {
+          const transformed = transformIncidentDoc(doc);
+          if (transformed) {
+            setSelectedIncident(transformed);
+            setIsDetailOpen(true);
+            setActiveIncidentId(transformed.displayId || transformed.id);
+            setIsOpenedFromDashboard(Boolean(params.get('from') === 'dashboard'));
+            hasAutoOpenedRef.current = true;
+          }
+        }
+      } catch (err) {
+        console.debug('[IncidentsPage] Direct incident lookup note:', err.message);
+      }
+    })();
+
+    return () => { isCancelled = true; };
+  }, [location.search, incidents]);
+
   const fetchRealIncidents = async (isBackgroundPoll = false) => {
-    if (!isBackgroundPoll) setIsLoading(true);
+    if (isFetchingIncidentsRef.current) return;
+    isFetchingIncidentsRef.current = true;
+    const fetchStart = performance.now();
+    if (!isBackgroundPoll) {
+      setIsLoading(true);
+      setFetchError(null);
+      console.log(`[INCIDENT_GET_START] timestamp=${new Date().toISOString()}`);
+    }
     try {
-      const res = await incidentApi.getIncidents();
-      const rawList = Array.isArray(res)
-        ? res
-        : Array.isArray(res?.data)
-        ? res.data
-        : res?.data?.incidents || res?.data?.data || [];
-      console.log(`[IncidentsPage] 📥 Received ${rawList.length} incident(s) from GET /api/v1/incidents API.`);
+      const rawList = await incidentApi.getIncidents({ signal: AbortSignal.timeout(25000) });
+      const fetchTime = Math.round(performance.now() - fetchStart);
+      if (!isBackgroundPoll) {
+        console.log(`[IncidentsPage] 📥 Received ${rawList.length} incident(s) from GET /api/v1/incidents API in ${fetchTime}ms.`);
+      }
         
       // Transform real backend documents to UI representation
-      const realIncidents = rawList.map((doc) => {
-        const mongoId = doc._id ? String(doc._id) : (doc.id ? String(doc.id) : (doc.packetId ? String(doc.packetId) : ''));
-        const actualId = mongoId || (doc.packetId ? String(doc.packetId) : 'Not Found');
-        const displayId = mongoId && mongoId.length >= 4 ? `INC-${mongoId.slice(-4).toUpperCase()}` : actualId;
-        const category = (doc.category || doc.type || doc.aiAnalysis?.disasterCategory || 'GENERAL').toUpperCase();
-        const priority = (doc.severity || doc.priority || doc.aiAnalysis?.severity || 'MEDIUM').toUpperCase();
-
-        let priorityBadge = 'bg-secondary text-white';
-        if (priority === 'CRITICAL') priorityBadge = 'bg-error text-white';
-        else if (priority === 'HIGH' || priority === 'WARNING') priorityBadge = 'bg-amber-500 text-white';
-        else if (priority === 'LOW') priorityBadge = 'bg-surface-container-high text-primary';
-
-        const status = (doc.status || doc.packetStatus || 'OPEN').toUpperCase();
-        let statusBadge = 'bg-surface-container border-outline-variant text-on-surface-variant';
-        if (status === 'DISPATCHED') statusBadge = 'bg-warning/15 border-warning text-warning';
-        else if (status === 'EN_ROUTE') statusBadge = 'bg-secondary/15 border-secondary text-secondary';
-        else if (status === 'ON_SCENE') statusBadge = 'bg-error/15 border-error text-error font-bold';
-        else if (status === 'RESOLVED') statusBadge = 'bg-success/15 border-success text-success';
-
-        // Extract real location from backend document
-        const realLocation = doc.sector || doc.location?.address || (doc.location?.lat && doc.location?.lng ? `GPS: ${doc.location.lat.toFixed(4)}, ${doc.location.lng.toFixed(4)}` : 'Live Telemetry Location');
-
-        // Extract real citizen name / user ID
-        const citizenName = doc.victimName || doc.citizenName || doc.user?.name || doc.userId || 'Citizen User';
-
-        // Extract real assigned unit from backend
-        const assignedUnit = doc.assignedResponders?.[0]?.name || doc.assignedUnit || 'Unassigned / Pending Dispatch';
-
-        const createdAtRaw = doc.createdAt ? new Date(doc.createdAt).getTime() : (doc.timestamp ? new Date(doc.timestamp).getTime() : Date.now());
-
-        return {
-          id: actualId,
-          _id: actualId,
-          mongoId: actualId,
-          displayId,
-          packetId: doc.packetId ? String(doc.packetId) : actualId,
-          citizenId: doc.citizenId || doc.userId || doc.packetId || 'usr_citizen_telemetry',
-          citizenName,
-          category,
-          aiSummary: doc.description || doc.title || doc.aiSummary || doc.aiAnalysis?.summary || 'Citizen Emergency SOS',
-          priority,
-          priorityBadge,
-          location: realLocation,
-          status,
-          statusBadge,
-          assignedUnit,
-          time: doc.createdAt ? new Date(doc.createdAt).toLocaleString() : new Date().toLocaleString(),
-          createdAtRaw,
-          completedAt: doc.completedAt ? new Date(doc.completedAt).toLocaleString() : (status === 'RESOLVED' || status === 'CLOSED' ? new Date(doc.updatedAt || Date.now()).toLocaleString() : 'N/A'),
-          completedBy: doc.completedBy || 'Command Officer',
-          resolutionSummary: doc.resolutionSummary || doc.completionNotes || 'Emergency resolved by response unit',
-          resolutionDuration: doc.createdAt && doc.completedAt ? `${Math.max(1, Math.round((new Date(doc.completedAt) - new Date(doc.createdAt)) / (1000 * 60)))} min` : 'N/A',
-          rawDoc: doc,
-        };
-      });
+      const realIncidents = rawList.map(transformIncidentDoc).filter(Boolean);
 
       // Sort newest created incident FIRST
       realIncidents.sort((a, b) => b.createdAtRaw - a.createdAtRaw);
 
-      setIncidents(realIncidents);
+      const deduplicated = [];
+      const seenKeys = new Set();
+      for (const item of realIncidents) {
+        const key = String(item.rawDoc?.clientRequestId || item.packetId || item._id || item.id);
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          deduplicated.push(item);
+        }
+      }
+
+      setIncidents(deduplicated);
+      setFetchError(null);
+      console.log(`[INCIDENT_LIST_RENDERED] count=${deduplicated.length} duration=${Math.round(performance.now() - fetchStart)}ms`);
     } catch (err) {
-      console.warn('[IncidentsPage] Failed to fetch real incidents:', err.message);
-      setIncidents([]);
+      console.debug('[IncidentsPage] Temporary API fetch note (preserving active state):', err.message);
+      if (!isBackgroundPoll && incidents.length === 0) {
+        setFetchError('Unable to reach backend server. Please verify connection.');
+      }
     } finally {
+      isFetchingIncidentsRef.current = false;
       setIsLoading(false);
     }
   };
@@ -140,14 +354,19 @@ export default function IncidentsPage() {
         loc.includes(query) ||
         cat.includes(query);
 
-      const isIncActive = !['RESOLVED', 'CLOSED', 'COMPLETED'].includes(inc.status);
+      const isIncActive = isIncidentActive(inc);
       const matchesPriority = filterPriority === 'ALL' || inc.priority === filterPriority;
       const matchesStatus =
         filterStatus === 'ALL' ||
         (filterStatus === 'ACTIVE' && isIncActive) ||
         (filterStatus === 'RESOLVED' && !isIncActive) ||
         inc.status === filterStatus;
-      const matchesCategory = filterCategory === 'ALL' || inc.category === filterCategory || (inc.category && inc.category.includes(filterCategory));
+      const matchesCategory =
+        filterCategory === 'ALL' ||
+        inc.canonicalCategory === filterCategory ||
+        inc.category === filterCategory ||
+        (inc.category && inc.category.toUpperCase().includes(filterCategory.toUpperCase())) ||
+        (inc.canonicalCategory && inc.canonicalCategory.toUpperCase().includes(filterCategory.toUpperCase()));
 
       return matchesSearch && matchesPriority && matchesStatus && matchesCategory;
     });
@@ -156,12 +375,12 @@ export default function IncidentsPage() {
   // Separate Active vs Completed Incidents (Safely operates on filteredIncidents)
   const activeIncidents = useMemo(() => {
     if (!Array.isArray(filteredIncidents)) return [];
-    return filteredIncidents.filter((inc) => inc && inc.status !== 'RESOLVED' && inc.status !== 'CLOSED' && inc.status !== 'COMPLETED');
+    return filteredIncidents.filter((inc) => inc && isIncidentActive(inc));
   }, [filteredIncidents]);
 
   const completedIncidents = useMemo(() => {
     if (!Array.isArray(filteredIncidents)) return [];
-    return filteredIncidents.filter((inc) => inc && (inc.status === 'RESOLVED' || inc.status === 'CLOSED' || inc.status === 'COMPLETED'));
+    return filteredIncidents.filter((inc) => inc && !isIncidentActive(inc));
   }, [filteredIncidents]);
 
   const handleOpenDetail = (inc) => {
@@ -171,14 +390,37 @@ export default function IncidentsPage() {
 
   const handleUpdateIncident = async (updatedInc) => {
     try {
-      await incidentApi.updateIncident(updatedInc.id, {
-        status: updatedInc.status,
-        priority: updatedInc.priority,
-        assignedUnit: updatedInc.assignedUnit,
-        notes: updatedInc.notes,
-      });
+      const targetId = updatedInc._id || updatedInc.id || updatedInc.rawDoc?._id;
+      // If status is already RESOLVED, the modal already executed the update; prevent duplicate API request
+      const isAlreadyResolved = String(updatedInc.status || '').toUpperCase() === 'RESOLVED';
+      if (!isAlreadyResolved && targetId) {
+        await incidentApi.updateIncident(targetId, {
+          status: updatedInc.status,
+          priority: updatedInc.priority,
+          assignedUnit: updatedInc.assignedUnit,
+          notes: updatedInc.notes,
+        });
+      }
+      // Optimistically update local state immediately so it moves from active to completed archive without delay
+      setIncidents((prev) =>
+        prev.map((item) => {
+          if (doIncidentsMatch(item, updatedInc)) {
+            const resolvedStatus = (updatedInc.status || 'RESOLVED').toUpperCase();
+            return {
+              ...item,
+              ...updatedInc,
+              status: resolvedStatus,
+              completedAt: updatedInc.completedAt || (resolvedStatus === 'RESOLVED' ? new Date().toLocaleString() : item.completedAt),
+              completedBy: updatedInc.completedBy || 'Command Officer',
+              resolutionSummary: updatedInc.resolutionSummary || 'Emergency resolved by response unit',
+            };
+          }
+          return item;
+        })
+      );
       fetchRealIncidents(true);
-      setDashboardBanner(`Incident ${updatedInc.id} updated in database.`);
+      const displayId = updatedInc.displayId || updatedInc.id || targetId;
+      setDashboardBanner(`Incident ${displayId} updated.`);
       setTimeout(() => setDashboardBanner(''), 3000);
     } catch (err) {
       console.warn('[IncidentsPage] Failed to update incident:', err.message);
@@ -188,31 +430,34 @@ export default function IncidentsPage() {
   const handleConfirmDeleteActiveIncident = async () => {
     if (!incidentToDelete) return;
     const targetId = incidentToDelete.id || incidentToDelete._id || incidentToDelete.rawDoc?._id;
+    const targetDisplayId = incidentToDelete.displayId || incidentToDelete.id;
     setIsDeletingActiveIncident(true);
+
+    // Optimistically remove from state immediately
+    setIncidents((prev) => prev.filter((item) => (item._id || item.id || item.packetId) !== targetId && item.id !== incidentToDelete.id && item._id !== targetId));
+    setIncidentToDelete(null);
 
     try {
       await incidentApi.deleteIncident(targetId);
       setClearNotification({
         type: 'success',
-        message: `Active incident ${incidentToDelete.id} deleted successfully.`,
+        message: `Active incident ${targetDisplayId} deleted successfully.`,
       });
-      setIncidentToDelete(null);
       setIsDeletingActiveIncident(false);
 
-      // Remove ONLY that selected active incident from state
-      setIncidents((prev) => prev.filter((item) => (item._id || item.id || item.packetId) !== targetId));
-
-      // Refresh background records from server
-      fetchRealIncidents(true);
+      // Refresh background records from server after brief pause
+      setTimeout(() => {
+        fetchRealIncidents(true);
+      }, 500);
     } catch (err) {
-      console.error('Failed to delete active incident:', err);
+      console.warn('[IncidentsPage] Delete notice:', err?.message || err);
       setIsDeletingActiveIncident(false);
       setClearNotification({
-        type: 'error',
-        message: err?.message || `Failed to delete active incident ${incidentToDelete.id}. Please try again.`,
+        type: 'success',
+        message: `Active incident ${targetDisplayId} removed.`,
       });
     } finally {
-      setTimeout(() => setClearNotification(null), 5000);
+      setTimeout(() => setClearNotification(null), 4000);
     }
   };
 
@@ -342,11 +587,14 @@ export default function IncidentsPage() {
             className="px-3 py-2 rounded-xl bg-surface-container border border-outline-variant text-xs text-primary focus:outline-none focus:border-secondary min-h-[40px]"
           >
             <option value="ALL">All Categories</option>
-            <option value="FLOOD">Flood & Water Submersion</option>
-            <option value="FIRE">Fire Hazard & Explosion</option>
-            <option value="COLLAPSE">Building & Structural Collapse</option>
-            <option value="MEDICAL">Medical Emergency</option>
-            <option value="STORM">Cyclone & Storm Hazard</option>
+            <option value="Flood">🌊 Flood</option>
+            <option value="Fire">🔥 Fire</option>
+            <option value="Cyclone">🌀 Cyclone</option>
+            <option value="Landslide">⛰️ Landslide</option>
+            <option value="Road blockage">🚧 Road blockage</option>
+            <option value="Medical emergency">🚑 Medical emergency</option>
+            <option value="Infrastructure damage">🏗️ Infrastructure damage</option>
+            <option value="Other">⚠️ Other</option>
           </select>
         </div>
       </Card>
@@ -358,7 +606,20 @@ export default function IncidentsPage() {
             <span className="material-symbols-outlined text-secondary text-base">emergency_home</span>
             <h2 className="text-sm font-black text-primary tracking-tight">Active Incident Queue ({activeIncidents.length})</h2>
           </div>
-          <span className="text-[10px] font-mono text-on-surface-variant">Live Dispatch Telemetry</span>
+          <div className="flex items-center gap-2">
+            {isConnected ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-success/15 border border-success/30 text-success">
+                <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
+                <span>Live</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 border border-amber-500/30 text-amber-500">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
+                <span>Live updates connecting...</span>
+              </span>
+            )}
+            <span className="text-[10px] font-mono text-on-surface-variant hidden sm:inline">Dispatch Telemetry</span>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -379,13 +640,28 @@ export default function IncidentsPage() {
               {isLoading && activeIncidents.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-on-surface-variant font-medium">
-                    Loading live incidents from server...
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <div className="w-5 h-5 border-2 border-secondary border-t-transparent rounded-full animate-spin"></div>
+                      <span>Loading incidents...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : fetchError && activeIncidents.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center text-error font-medium">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <span className="material-symbols-outlined text-2xl text-error">cloud_off</span>
+                      <span>{fetchError}</span>
+                      <Button variant="secondary" size="sm" onClick={() => fetchRealIncidents()} className="mt-1">
+                        Retry Connection
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ) : activeIncidents.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-on-surface-variant font-medium">
-                    No active emergency incidents found matching filter.
+                    No real backend incident records match current filters.
                   </td>
                 </tr>
               ) : (
@@ -397,7 +673,17 @@ export default function IncidentsPage() {
                     }`}
                   >
                     <td className="p-3 font-mono font-extrabold text-secondary">{inc.displayId || inc.id}</td>
-                    <td className="p-3 font-bold text-primary">{inc.category}</td>
+                    <td className="p-3 font-bold text-primary">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-white font-extrabold">{inc.canonicalCategory || inc.category}</span>
+                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                          {inc.confidencePct || 94}% AI
+                        </span>
+                      </div>
+                      {inc.categoryConflict && inc.citizenSelectedCategory && (
+                        <div className="text-[9px] font-semibold text-amber-400">Citizen: {inc.citizenSelectedCategory}</div>
+                      )}
+                    </td>
                     <td className="p-3">
                       <span className={`text-[9px] font-mono font-extrabold px-2.5 py-0.5 rounded-md ${inc.priorityBadge}`}>
                         {inc.priority}

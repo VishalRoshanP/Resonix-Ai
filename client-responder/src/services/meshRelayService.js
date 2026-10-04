@@ -13,6 +13,7 @@ import {
   savePacketToLocalQueue,
   removeLocalPacket,
 } from './emergencyPacketManager';
+import { env } from '../utils/env';
 
 export const MESH_PROTOCOLS = {
   BLE_BEACON: 'BLE_BEACON_V1',
@@ -196,7 +197,8 @@ class MeshRelayService {
       if (transportSendFn) {
         result = await transportSendFn(forwardingEnvelope);
       } else {
-        const res = await fetch('/api/v1/relay/packet', {
+        const relayUrl = `${env.apiBaseUrl}/relay/packet`;
+        const res = await fetch(relayUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(forwardingEnvelope.payload),

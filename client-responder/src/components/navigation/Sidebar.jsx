@@ -1,15 +1,18 @@
 import { NavLink } from 'react-router-dom';
 import { RESPONDER_ROUTES } from '../../constants/routes';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { cn } from '../../utils/helpers';
 
 export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
+  const { t } = useLanguage();
+
   // 5 Streamlined Essential Navigation Items for Emergency Responders
   const NAV_ITEMS = [
-    { label: 'Dashboard', icon: 'dashboard', path: RESPONDER_ROUTES.DASHBOARD },
-    { label: 'Incidents', icon: 'warning', path: RESPONDER_ROUTES.INCIDENTS },
-    { label: 'Resources', icon: 'alt_route', path: RESPONDER_ROUTES.RESOURCES },
-    { label: 'Analytics', icon: 'analytics', path: RESPONDER_ROUTES.ANALYTICS },
-    { label: 'Settings', icon: 'settings', path: RESPONDER_ROUTES.SETTINGS },
+    { key: 'nav_dashboard', label: 'Dashboard', icon: 'dashboard', path: RESPONDER_ROUTES.DASHBOARD },
+    { key: 'nav_incidents', label: 'Incidents', icon: 'warning', path: RESPONDER_ROUTES.INCIDENTS },
+    { key: 'nav_resources', label: 'Resources', icon: 'alt_route', path: RESPONDER_ROUTES.RESOURCES },
+    { key: 'nav_analytics', label: 'Analytics', icon: 'analytics', path: RESPONDER_ROUTES.ANALYTICS },
+    { key: 'nav_settings', label: 'Settings', icon: 'settings', path: RESPONDER_ROUTES.SETTINGS },
   ];
 
   return (
@@ -24,8 +27,8 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
 
       <aside
         className={cn(
-          'w-64 bg-surface-container-low border-r border-outline-variant py-6 px-4 flex flex-col justify-between shrink-0 h-screen sticky top-0 z-50 transition-transform duration-300 md:translate-x-0',
-          mobileOpen ? 'fixed left-0 top-0 translate-x-0' : 'hidden md:flex'
+          'w-64 bg-surface-container-low border-r border-outline-variant py-6 px-4 flex flex-col justify-between shrink-0 h-screen h-[100dvh] overflow-y-auto overscroll-contain transition-transform duration-300 fixed top-0 left-0 bottom-0 z-40 md:translate-x-0',
+          mobileOpen ? 'translate-x-0 z-50 flex' : '-translate-x-full md:translate-x-0 hidden md:flex'
         )}
       >
         <div className="space-y-6">
@@ -57,15 +60,33 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
                 onClick={onCloseMobile}
                 className={({ isActive }) =>
                   cn(
-                    'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all border-l-4 min-h-[44px]',
+                    'sidebar-nav-item flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm transition-all border-l-4 min-h-[44px]',
                     isActive
-                      ? 'bg-primary text-white border-secondary font-bold shadow-xs'
-                      : 'text-on-surface-variant border-transparent hover:bg-surface-container-high hover:text-primary'
+                      ? 'active shadow-xs !text-white text-white font-extrabold'
+                      : 'text-on-surface-variant font-medium'
                   )
                 }
               >
-                <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
-                <span>{item.label}</span>
+                {({ isActive }) => (
+                  <>
+                    <span
+                      className={cn(
+                        'material-symbols-outlined text-[20px] shrink-0 transition-colors',
+                        isActive ? '!text-white text-white' : 'text-on-surface-variant'
+                      )}
+                    >
+                      {item.icon}
+                    </span>
+                    <span
+                      className={cn(
+                        'truncate transition-colors',
+                        isActive ? '!text-white text-white font-extrabold' : 'text-on-surface-variant'
+                      )}
+                    >
+                      {t(item.key, item.label)}
+                    </span>
+                  </>
+                )}
               </NavLink>
             ))}
           </nav>

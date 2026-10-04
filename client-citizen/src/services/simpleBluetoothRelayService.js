@@ -33,8 +33,8 @@ class SimpleBluetoothRelayService {
     return {
       packetId: rawPacket.packetId || `pkt_${Date.now()}`,
       timestamp: rawPacket.timestamp || new Date().toISOString(),
-      latitude: rawPacket.gpsCoordinates?.latitude || rawPacket.latitude || 12.9716,
-      longitude: rawPacket.gpsCoordinates?.longitude || rawPacket.longitude || 77.5946,
+      latitude: rawPacket.gpsCoordinates?.latitude ?? rawPacket.latitude ?? null,
+      longitude: rawPacket.gpsCoordinates?.longitude ?? rawPacket.longitude ?? null,
       priority: rawPacket.priority || rawPacket.severity || 'HIGH',
       victimName: rawPacket.victimName || rawPacket.user?.name || 'Citizen User',
       phone: rawPacket.phone || rawPacket.user?.phone || 'Emergency Signal',

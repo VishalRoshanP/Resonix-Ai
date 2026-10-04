@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { SettingsProvider } from './contexts/SettingsContext';
 import { AlertProvider } from './contexts/AlertContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { PermissionProvider } from './contexts/PermissionContext';
@@ -13,10 +14,7 @@ import ProtectedRoute from './components/navigation/ProtectedRoute';
 import PublicRoute from './components/navigation/PublicRoute';
 import PageLoadingFallback from './components/feedback/PageLoadingFallback';
 
-// Application Entry Landing Portal
-const LandingPortalPage = lazy(() => import('./pages/LandingPortalPage'));
-
-// Citizen Application Placeholder Pages (/citizen/*)
+// Citizen Application Pages (/citizen/*)
 const CitizenRootPage = lazy(() => import('./pages/citizen/CitizenRootPage'));
 const CitizenLoginPage = lazy(() => import('./pages/citizen/CitizenLoginPage'));
 const CitizenRegisterPage = lazy(() => import('./pages/citizen/CitizenRegisterPage'));
@@ -24,6 +22,7 @@ const CitizenHomePage = lazy(() => import('./pages/citizen/CitizenHomePage'));
 const CitizenProfilePage = lazy(() => import('./pages/citizen/CitizenProfilePage'));
 const CitizenSettingsPage = lazy(() => import('./pages/citizen/CitizenSettingsPage'));
 const CitizenStatusPage = lazy(() => import('./pages/citizen/CitizenStatusPage'));
+const CitizenSOSPage = lazy(() => import('./pages/citizen/CitizenSOSPage'));
 
 // Preserved Citizen Auxiliary Views
 const SOSPage = lazy(() => import('./pages/SOSPage'));
@@ -37,48 +36,51 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <ThemeProvider>
-          <AuthProvider>
-            <LanguageProvider>
-              <PermissionProvider>
-                <AlertProvider>
-                  <Suspense fallback={<PageLoadingFallback />}>
-                    <Routes>
-                      {/* 1. Main Entry Landing Portal */}
-                      <Route path="/" element={<LandingPortalPage />} />
+          <SettingsProvider>
+            <AuthProvider>
+              <LanguageProvider>
+                <PermissionProvider>
+                  <AlertProvider>
+                    <Suspense fallback={<PageLoadingFallback />}>
+                      <Routes>
+                        {/* 1. Direct Entry to Citizen Emergency Interface */}
+                        <Route path="/" element={<Navigate to="/citizen/home" replace />} />
 
-                      {/* 2. Citizen Core Application Routes (/citizen/*) */}
-                      <Route element={<CitizenLayout />}>
-                        <Route path="/citizen" element={<CitizenRootPage />} />
-                        <Route path="/citizen/home" element={<CitizenHomePage />} />
-                        <Route path="/citizen/status" element={<CitizenStatusPage />} />
-                        <Route path="/citizen/settings" element={<CitizenSettingsPage />} />
-                        <Route path="/settings" element={<Navigate to="/citizen/settings" replace />} />
-                        <Route path="/sos" element={<SOSPage />} />
-                        <Route path="/voice-relay" element={<VoiceRelayPage />} />
-                        <Route path="/emergency-guide" element={<EmergencyGuidePage />} />
-                        <Route path="/language-selection" element={<LanguageSelectionPage />} />
-                        <Route path="/permissions" element={<PermissionSetupPage />} />
+                        {/* 2. Citizen Core Application Routes (/citizen/*) */}
+                        <Route element={<CitizenLayout />}>
+                          <Route path="/citizen" element={<CitizenRootPage />} />
+                          <Route path="/citizen/home" element={<CitizenHomePage />} />
+                          <Route path="/citizen/sos" element={<CitizenSOSPage />} />
+                          <Route path="/citizen/status" element={<CitizenStatusPage />} />
+                          <Route path="/citizen/settings" element={<CitizenSettingsPage />} />
+                          <Route path="/settings" element={<Navigate to="/citizen/settings" replace />} />
+                          <Route path="/sos" element={<CitizenSOSPage />} />
+                          <Route path="/voice-relay" element={<VoiceRelayPage />} />
+                          <Route path="/emergency-guide" element={<EmergencyGuidePage />} />
+                          <Route path="/language-selection" element={<LanguageSelectionPage />} />
+                          <Route path="/permissions" element={<PermissionSetupPage />} />
 
-                        {/* Public Auth Routes */}
-                        <Route element={<PublicRoute />}>
-                          <Route path="/citizen/login" element={<CitizenLoginPage />} />
-                          <Route path="/citizen/register" element={<CitizenRegisterPage />} />
+                          {/* Public Auth Routes */}
+                          <Route element={<PublicRoute />}>
+                            <Route path="/citizen/login" element={<CitizenLoginPage />} />
+                            <Route path="/citizen/register" element={<CitizenRegisterPage />} />
+                          </Route>
+
+                          {/* Protected Citizen Account Routes */}
+                          <Route element={<ProtectedRoute />}>
+                            <Route path="/citizen/profile" element={<CitizenProfilePage />} />
+                          </Route>
                         </Route>
 
-                        {/* Protected Citizen Account Routes */}
-                        <Route element={<ProtectedRoute />}>
-                          <Route path="/citizen/profile" element={<CitizenProfilePage />} />
-                        </Route>
-                      </Route>
-
-                      {/* Catch-all Redirect to Landing */}
-                      <Route path="*" element={<Navigate to="/" replace />} />
-                    </Routes>
-                  </Suspense>
-                </AlertProvider>
-              </PermissionProvider>
-            </LanguageProvider>
-          </AuthProvider>
+                        {/* Catch-all Redirect directly to Citizen Emergency Home */}
+                        <Route path="*" element={<Navigate to="/citizen/home" replace />} />
+                      </Routes>
+                    </Suspense>
+                  </AlertProvider>
+                </PermissionProvider>
+              </LanguageProvider>
+            </AuthProvider>
+          </SettingsProvider>
         </ThemeProvider>
       </BrowserRouter>
     </ErrorBoundary>

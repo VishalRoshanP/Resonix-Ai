@@ -7,6 +7,7 @@ import { incidentApi } from '../services/api';
 export default function CitizensPage() {
   const [incidents, setIncidents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL');
 
@@ -18,23 +19,29 @@ export default function CitizensPage() {
     fetchRealCitizenDirectory();
     const interval = setInterval(() => {
       fetchRealCitizenDirectory(true);
-    }, 5000);
+    }, 15000);
     return () => clearInterval(interval);
   }, []);
 
   const fetchRealCitizenDirectory = async (isBackground = false) => {
-    if (!isBackground) setIsLoading(true);
+    if (!isBackground) {
+      setIsLoading(true);
+      setFetchError(null);
+    }
     try {
-      const res = await incidentApi.getIncidents();
+      const res = await incidentApi.getIncidents({ signal: AbortSignal.timeout(10000) });
       const rawList = Array.isArray(res)
         ? res
         : Array.isArray(res?.data)
         ? res.data
         : res?.data?.incidents || res?.data?.data || [];
       setIncidents(rawList);
+      setFetchError(null);
     } catch (err) {
       console.warn('[CitizensPage] Failed to fetch citizen directory from backend:', err.message);
-      setIncidents([]);
+      if (!isBackground || incidents.length === 0) {
+        setFetchError('Data temporarily unavailable: Waiting for live backend data');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -57,20 +64,20 @@ export default function CitizensPage() {
 
         citizenMap.set(citizenId, {
           id: String(citizenId),
-          name: inc.userName || inc.name || `Citizen User (${String(citizenId).substring(0, 10)})`,
-          email: inc.userEmail || inc.email || `${String(citizenId).substring(0, 8)}@resonix.gov`,
-          phone: inc.phone || inc.contactPhone || '+91 98765 43210',
+          name: inc.userName || inc.name || `Citizen (${String(citizenId).substring(0, 10)})`,
+          email: inc.userEmail || inc.email || 'N/A',
+          phone: inc.phone || inc.contactPhone || 'N/A',
           isGuest: String(citizenId).includes('guest') || !inc.userEmail,
-          bloodGroup: inc.bloodGroup || 'O+',
+          bloodGroup: inc.bloodGroup || '',
           language: (inc.language || 'English').toUpperCase(),
-          medicalConditions: inc.medicalConditions || inc.description || 'Verified Telemetry Active',
-          emergencyContactName: inc.emergencyContactName || 'Emergency Operations Center',
-          emergencyContactPhone: inc.emergencyContactPhone || '+91 98765 00000',
+          medicalConditions: inc.medicalConditions || inc.description || '',
+          emergencyContactName: inc.emergencyContactName || '',
+          emergencyContactPhone: inc.emergencyContactPhone || '',
           status: inc.status || 'ACTIVE_SOS',
           statusBadge,
           emergencyCount: 1,
           registeredDate: inc.createdAt ? new Date(inc.createdAt).toLocaleDateString() : 'Live Session',
-          city: inc.sector || inc.location?.address || 'Sector 4, Koramangala',
+          city: inc.sector || inc.location?.address || 'Location unavailable',
         });
       } else {
         const existing = citizenMap.get(citizenId);
@@ -160,10 +167,26 @@ export default function CitizensPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/40">
-              {isLoading ? (
+              {isLoading && citizens.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-secondary font-mono font-bold">
-                    Loading real citizen directory from MongoDB...
+                  <td colSpan={7} className="p-8 text-center text-secondary font-mono font-bold">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <div className="w-5 h-5 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
+                      <span>Loading real citizen directory from MongoDB...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : fetchError && citizens.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="p-8 text-center text-amber-500 font-medium">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <span className="material-symbols-outlined text-2xl text-amber-500">cloud_off</span>
+                      <span className="text-xs font-bold text-primary">{fetchError}</span>
+                      <Button variant="secondary" size="sm" onClick={() => fetchRealCitizenDirectory(false)} className="mt-1 text-xs">
+                        <span className="material-symbols-outlined text-xs mr-1">refresh</span>
+                        Retry Connection
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ) : filteredCitizens.length === 0 ? (

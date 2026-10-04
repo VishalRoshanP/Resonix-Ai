@@ -20,7 +20,7 @@ const validateUpdateIncident = (data) => {
   }
   if (data.status) {
     const normStatus = String(data.status).toLowerCase();
-    if (!['open', 'in_progress', 'dispatched', 'en_route', 'on_scene', 'active', 'resolved', 'completed', 'closed', 'cancelled'].includes(normStatus)) {
+    if (!['open', 'in_progress', 'dispatched', 'en_route', 'on_scene', 'active', 'acknowledged', 'resolved', 'completed', 'closed', 'cancelled'].includes(normStatus)) {
       return { error: 'Invalid incident status' };
     }
   }

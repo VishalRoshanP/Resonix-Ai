@@ -21,7 +21,7 @@ export default function LandingPortalPage() {
               </h1>
               <p className="text-xs font-semibold text-secondary flex items-center gap-1.5 mt-1">
                 <span className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
-                Powered by Gemma 4
+                Emergency intelligence and response support
               </p>
             </div>
           </div>
@@ -109,9 +109,9 @@ export default function LandingPortalPage() {
               <div className="w-9 h-9 rounded-lg bg-secondary/10 border border-secondary/20 flex items-center justify-center">
                 <span className="material-symbols-outlined text-secondary text-xl">psychology</span>
               </div>
-              <h4 className="font-bold text-primary text-sm">AI-Powered Incident Intelligence</h4>
+              <h4 className="font-bold text-primary text-sm">Emergency Intelligence</h4>
               <p className="text-xs text-on-surface-variant leading-relaxed">
-                Local Gemma 4 model rationale & predictive resource allocation.
+                Incident analysis & predictive emergency resource allocation.
               </p>
             </div>
           </div>
@@ -124,7 +124,7 @@ export default function LandingPortalPage() {
           Emergency reporting works even without creating an account.
         </p>
         <p className="text-xs text-on-surface-variant">
-          Privacy protected. • Powered by Gemma 4.
+          Privacy protected. • Emergency intelligence and response support.
         </p>
       </footer>
     </div>

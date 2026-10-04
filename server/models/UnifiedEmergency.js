@@ -76,7 +76,7 @@ const unifiedEmergencySchema = new mongoose.Schema(
     },
     fusionModel: {
       type: String,
-      default: 'google/gemma-4-e4b-it',
+      default: 'resonix-disaster-intelligence',
     },
   },
   {

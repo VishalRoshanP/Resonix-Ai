@@ -7,7 +7,7 @@
  * - Uses lightweight HEAD ping verification only on state changes (No excessive polling)
  * - Emits event notifications to all registered UI subscribers
  * - Reusable singleton service across the entire application
- */
+import { env } from '../utils/env';
 
 class NetworkConnectivityService {
   constructor() {
@@ -55,7 +55,8 @@ class NetworkConnectivityService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-      const response = await fetch('/api/health', {
+      const healthUrl = `${env.apiBaseUrl}/health`;
+      const response = await fetch(healthUrl, {
         method: 'HEAD',
         cache: 'no-store',
         signal: controller.signal,

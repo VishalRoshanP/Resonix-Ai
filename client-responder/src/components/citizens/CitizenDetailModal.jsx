@@ -7,23 +7,9 @@ export default function CitizenDetailModal({ citizen, isOpen, onClose }) {
 
   if (!isOpen || !citizen) return null;
 
-  // Mock Incident Timeline
-  const INCIDENT_TIMELINE = [
-    { id: 'INC-2026-0894', date: '2026-07-29 17:15', category: 'FLOOD', status: 'DISPATCHED', location: 'Sector 4, Koramangala' },
-    { id: 'INC-2026-0612', date: '2026-05-14 08:30', category: 'MEDICAL', status: 'RESOLVED', location: 'East Highway Crossing' },
-  ];
-
-  // Mock Previous Reports
-  const PREVIOUS_REPORTS = [
-    { id: 'rpt_101', type: 'VOICE_TELEMETRY', duration: '14s', date: '2026-07-29 17:15', text: 'Water levels rising rapidly up to 1.5m near dwelling.' },
-    { id: 'rpt_102', type: 'PHOTO_ATTACHMENT', size: '142 KB', date: '2026-07-29 17:16', text: 'Disaster scene photo captured showing inundated street.' },
-  ];
-
-  // Mock Communication History
-  const COMMS_HISTORY = [
-    { id: 'sms_1', date: '17:18', type: 'OUTGOING_SMS', text: 'NDRF Rescue Boat #4 dispatched to your location. ETA 8 mins.' },
-    { id: 'call_1', date: '17:20', type: 'VOICE_CALL', text: 'Dispatcher Miller confirmed target location with citizen.' },
-  ];
+  const incidentTimeline = citizen.history || citizen.incidents || [];
+  const previousReports = citizen.reports || [];
+  const commsHistory = citizen.comms || citizen.logs || [];
 
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in text-left overflow-y-auto">
@@ -125,7 +111,7 @@ export default function CitizenDetailModal({ citizen, isOpen, onClose }) {
                 <div>
                   <span className="text-[10px] text-on-surface-variant font-bold block uppercase">Blood Group</span>
                   <span className="font-mono font-extrabold text-error bg-error/15 px-2 py-0.5 rounded border border-error/30 inline-block mt-0.5">
-                    {citizen.bloodGroup || 'O+'}
+                    {citizen.bloodGroup || 'Unspecified'}
                   </span>
                 </div>
                 <div>
@@ -136,7 +122,7 @@ export default function CitizenDetailModal({ citizen, isOpen, onClose }) {
 
               <div className="pt-1">
                 <span className="text-[10px] text-on-surface-variant font-bold block uppercase">Medical Conditions & Allergies</span>
-                <p className="text-primary font-medium mt-0.5">{citizen.medicalConditions || 'Mild Asthma, Penicillin Allergy. Requires oxygen check upon rescue.'}</p>
+                <p className="text-primary font-medium mt-0.5">{citizen.medicalConditions || 'None reported.'}</p>
               </div>
             </div>
           </div>
@@ -149,20 +135,24 @@ export default function CitizenDetailModal({ citizen, isOpen, onClose }) {
               Emergency SOS Incident History
             </h3>
             <div className="space-y-2">
-              {INCIDENT_TIMELINE.map((inc) => (
-                <div key={inc.id} className="p-3 rounded-xl bg-surface-container border border-outline-variant flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-extrabold text-secondary">{inc.id}</span>
-                      <span className="font-extrabold text-primary">{inc.category}</span>
+              {incidentTimeline.length === 0 ? (
+                <div className="p-4 text-center text-on-surface-variant">No incident history found.</div>
+              ) : (
+                incidentTimeline.map((inc) => (
+                  <div key={inc.id || inc._id} className="p-3 rounded-xl bg-surface-container border border-outline-variant flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-extrabold text-secondary">{inc.id || inc._id}</span>
+                        <span className="font-extrabold text-primary">{inc.category || 'EMERGENCY'}</span>
+                      </div>
+                      <p className="text-[10px] text-on-surface-variant mt-0.5">{inc.date || inc.createdAt} • {inc.location || 'Location unavailable'}</p>
                     </div>
-                    <p className="text-[10px] text-on-surface-variant mt-0.5">{inc.date} • {inc.location}</p>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-secondary/15 text-secondary border border-secondary/30">
+                      {inc.status || 'REPORTED'}
+                    </span>
                   </div>
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-secondary/15 text-secondary border border-secondary/30">
-                    {inc.status}
-                  </span>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}
@@ -174,15 +164,19 @@ export default function CitizenDetailModal({ citizen, isOpen, onClose }) {
               Submitted Voice & Photo Telemetry Reports
             </h3>
             <div className="space-y-2">
-              {PREVIOUS_REPORTS.map((rpt) => (
-                <div key={rpt.id} className="p-3 rounded-xl bg-surface-container border border-outline-variant space-y-1">
-                  <div className="flex items-center justify-between text-[10px] font-mono">
-                    <span className="font-bold text-secondary">{rpt.type}</span>
-                    <span className="text-on-surface-variant">{rpt.date}</span>
+              {previousReports.length === 0 ? (
+                <div className="p-4 text-center text-on-surface-variant">No previous telemetry reports found.</div>
+              ) : (
+                previousReports.map((rpt) => (
+                  <div key={rpt.id || rpt._id} className="p-3 rounded-xl bg-surface-container border border-outline-variant space-y-1">
+                    <div className="flex items-center justify-between text-[10px] font-mono">
+                      <span className="font-bold text-secondary">{rpt.type || 'REPORT'}</span>
+                      <span className="text-on-surface-variant">{rpt.date || rpt.timestamp}</span>
+                    </div>
+                    <p className="text-primary font-medium">{rpt.text || rpt.summary}</p>
                   </div>
-                  <p className="text-primary font-medium">{rpt.text}</p>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}
@@ -194,20 +188,26 @@ export default function CitizenDetailModal({ citizen, isOpen, onClose }) {
               Registered Emergency Contacts
             </h3>
             <div className="space-y-2">
-              <div className="p-3 rounded-xl bg-surface-container border border-outline-variant flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-bold text-secondary uppercase block">Primary Emergency Contact</span>
-                  <p className="font-extrabold text-primary text-xs">{citizen.emergencyContactName || 'Mary Johnson (Mother)'}</p>
-                  <p className="font-mono text-on-surface-variant text-[11px]">{citizen.emergencyContactPhone || '+91 98765 00000'}</p>
+              {citizen.emergencyContactName ? (
+                <div className="p-3 rounded-xl bg-surface-container border border-outline-variant flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-bold text-secondary uppercase block">Primary Emergency Contact</span>
+                    <p className="font-extrabold text-primary text-xs">{citizen.emergencyContactName}</p>
+                    <p className="font-mono text-on-surface-variant text-[11px]">{citizen.emergencyContactPhone || 'N/A'}</p>
+                  </div>
+                  {citizen.emergencyContactPhone && (
+                    <a
+                      href={`tel:${citizen.emergencyContactPhone}`}
+                      className="px-3 py-1.5 rounded-lg bg-secondary/15 border border-secondary/30 text-secondary font-bold text-xs flex items-center gap-1 cursor-pointer hover:bg-secondary/25"
+                    >
+                      <span className="material-symbols-outlined text-sm">call</span>
+                      <span>Call</span>
+                    </a>
+                  )}
                 </div>
-                <a
-                  href={`tel:${citizen.emergencyContactPhone || '+919876500000'}`}
-                  className="px-3 py-1.5 rounded-lg bg-secondary/15 border border-secondary/30 text-secondary font-bold text-xs flex items-center gap-1 cursor-pointer hover:bg-secondary/25"
-                >
-                  <span className="material-symbols-outlined text-sm">call</span>
-                  <span>Call</span>
-                </a>
-              </div>
+              ) : (
+                <div className="p-4 text-center text-on-surface-variant">No emergency contact registered.</div>
+              )}
             </div>
           </div>
         )}
@@ -219,15 +219,19 @@ export default function CitizenDetailModal({ citizen, isOpen, onClose }) {
               Dispatcher Communication Log
             </h3>
             <div className="space-y-2">
-              {COMMS_HISTORY.map((c) => (
-                <div key={c.id} className="p-3 rounded-xl bg-surface-container border border-outline-variant space-y-1">
-                  <div className="flex items-center justify-between text-[10px] font-mono">
-                    <span className="font-bold text-secondary">{c.type}</span>
-                    <span className="text-on-surface-variant">{c.date}</span>
+              {commsHistory.length === 0 ? (
+                <div className="p-4 text-center text-on-surface-variant">No communication history logged.</div>
+              ) : (
+                commsHistory.map((c) => (
+                  <div key={c.id || c._id} className="p-3 rounded-xl bg-surface-container border border-outline-variant space-y-1">
+                    <div className="flex items-center justify-between text-[10px] font-mono">
+                      <span className="font-bold text-secondary">{c.type || 'LOG'}</span>
+                      <span className="text-on-surface-variant">{c.date || c.timestamp}</span>
+                    </div>
+                    <p className="text-primary font-medium">{c.text || c.message}</p>
                   </div>
-                  <p className="text-primary font-medium">{c.text}</p>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}

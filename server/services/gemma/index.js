@@ -1,5 +1,5 @@
 /**
- * Gemma 4 E4B Reusable Service Layer & Orchestrator for RESONIX AI
+ * Disaster Intelligence Reusable Service Layer & Orchestrator for RESONIX AI
  * 
  * Provides unified interface methods for all AI capabilities:
  * - analyzeVoice()
@@ -60,26 +60,26 @@ class GemmaService {
       const prompt = this.builder.buildJsonPrompt({
         systemInstruction: systemPrompt,
         userInput: {
-          transcript: transcript || 'Flash flood alert in Sector 4! Requesting immediate rescue boat.',
+          transcript: transcript || '',
           mimeType,
           ...context,
         },
         schemaDescription,
       });
 
-      const response = await this.client.generateText(prompt);
+      const response = await this.client.generateJson(prompt);
 
       const defaultFallback = {
-        disasterType: 'FLOOD',
-        summary: transcript ? `Emergency dispatch: "${transcript}"` : 'Flash flood warning reported in Sector 4.',
-        peopleCount: 4,
-        childrenCount: 1,
-        medicalNeed: true,
-        urgency: 'CRITICAL',
-        possibleHazards: ['FLASH_FLOOD', 'ELECTROCUTION_RISK'],
+        disasterType: 'OTHER',
+        summary: transcript ? `Emergency report received: "${transcript}"` : 'Emergency report received.',
+        peopleCount: null,
+        childrenCount: null,
+        medicalNeed: false,
+        urgency: 'HIGH',
+        possibleHazards: [],
         language: context.language || 'en',
         confidenceScore: null,
-        status: 'QUEUED_FOR_GEMMA4',
+        status: 'QUEUED_FOR_AI',
         model: this.config.hfModel,
       };
 
@@ -98,22 +98,22 @@ class GemmaService {
         possibleHazards: Array.isArray(parsed.possibleHazards) ? parsed.possibleHazards : defaultFallback.possibleHazards,
         language: parsed.language || defaultFallback.language,
         confidenceScore: typeof parsed.confidenceScore === 'number' ? parsed.confidenceScore : defaultFallback.confidenceScore,
-        status: 'QUEUED_FOR_GEMMA4',
+        status: 'QUEUED_FOR_AI',
         model: this.config.hfModel,
       };
     } catch (error) {
       logger.warn('[GemmaService] analyzeVoice fallback active:', error.message);
       return {
         disasterType: 'OTHER',
-        summary: transcript || 'Spoken emergency dispatch received.',
-        peopleCount: 1,
-        childrenCount: 0,
+        summary: transcript || 'Emergency report received — voice analysis unavailable.',
+        peopleCount: null,
+        childrenCount: null,
         medicalNeed: false,
         urgency: 'HIGH',
-        possibleHazards: ['UNSPECIFIED_HAZARD'],
+        possibleHazards: [],
         language: context.language || 'en',
         confidenceScore: null,
-        status: 'QUEUED_FOR_GEMMA4',
+        status: 'QUEUED_FOR_AI',
         model: this.config.hfModel,
       };
     }
@@ -158,7 +158,7 @@ class GemmaService {
         },
         humanVerificationRequired: true,
         humanVerified: false,
-        status: 'QUEUED_FOR_GEMMA4',
+        status: 'QUEUED_FOR_AI',
         model: this.config.hfModel,
       };
     }
@@ -177,25 +177,25 @@ class GemmaService {
       const prompt = this.builder.buildJsonPrompt({
         systemInstruction: systemPrompt,
         userInput: {
-          text: text || 'Flash flood warning in Sector 4! 4 people trapped including 1 child.',
+          text: text || '',
           ...context,
         },
         schemaDescription,
       });
 
-      const response = await this.client.generateText(prompt);
+      const response = await this.client.generateJson(prompt);
 
       const defaultFallback = {
-        disaster: 'FLOOD',
-        severity: 'CRITICAL',
-        people: 4,
-        children: 1,
-        medicalNeeds: true,
-        infrastructureDamage: 'MODERATE',
-        urgency: 'CRITICAL',
-        keywords: ['FLOOD', 'TRAPPED', 'RESCUE_BOAT'],
-        confidence: 0.94,
-        status: 'QUEUED_FOR_GEMMA4',
+        disaster: 'OTHER',
+        severity: 'HIGH',
+        people: null,
+        children: null,
+        medicalNeeds: false,
+        infrastructureDamage: 'UNKNOWN',
+        urgency: 'HIGH',
+        keywords: [],
+        confidence: null,
+        status: 'QUEUED_FOR_AI',
         model: this.config.hfModel,
       };
 
@@ -214,22 +214,22 @@ class GemmaService {
         urgency: parsed.urgency || defaultFallback.urgency,
         keywords: Array.isArray(parsed.keywords) ? parsed.keywords : defaultFallback.keywords,
         confidence: typeof parsed.confidence === 'number' ? parsed.confidence : defaultFallback.confidence,
-        status: 'QUEUED_FOR_GEMMA4',
+        status: 'QUEUED_FOR_AI',
         model: this.config.hfModel,
       };
     } catch (error) {
       logger.warn('[GemmaService] analyzeText fallback active:', error.message);
       return {
         disaster: 'OTHER',
-        severity: 'SEVERE',
-        people: 1,
-        children: 0,
+        severity: 'HIGH',
+        people: null,
+        children: null,
         medicalNeeds: false,
-        infrastructureDamage: 'NONE',
+        infrastructureDamage: 'UNKNOWN',
         urgency: 'HIGH',
-        keywords: ['EMERGENCY_REPORT'],
-        confidence: 0.88,
-        status: 'QUEUED_FOR_GEMMA4',
+        keywords: [],
+        confidence: null,
+        status: 'QUEUED_FOR_AI',
         model: this.config.hfModel,
       };
     }
@@ -255,7 +255,7 @@ class GemmaService {
 
       if (this._isErrorResponse(response)) {
         return {
-          status: 'QUEUED_FOR_GEMMA4',
+          status: 'QUEUED_FOR_AI',
           capability: 'extractIncident',
           model: this.config.hfModel,
           preparedAt: new Date().toISOString(),
@@ -263,17 +263,40 @@ class GemmaService {
       }
 
       return this.parser.parseJson(response, {
-        status: 'QUEUED_FOR_GEMMA4',
+        status: 'QUEUED_FOR_AI',
         capability: 'extractIncident',
         extractedIncident: {},
       });
     } catch (error) {
       logger.warn('[GemmaService] extractIncident fallback active:', error.message);
       return {
-        status: 'QUEUED_FOR_GEMMA4',
+        status: 'QUEUED_FOR_AI',
         capability: 'extractIncident',
         model: this.config.hfModel,
         preparedAt: new Date().toISOString(),
+      };
+    }
+  }
+
+  /**
+   * Multi-Citizen Incident Fusion Reasoning with Gemma 4 26B A4B
+   */
+  async reasonIncidentFusion(clusterData, context = {}) {
+    try {
+      logger.info('[GemmaService] Executing reasonIncidentFusion interface');
+      const incidentFusionReasoningService = require('../incidentFusionReasoningService');
+      return await incidentFusionReasoningService.reasonIncidentFusion(clusterData, context);
+    } catch (error) {
+      logger.warn('[GemmaService] reasonIncidentFusion fallback active:', error.message);
+      return {
+        related: true,
+        dominantHazard: 'GENERAL',
+        priority: 'HIGH',
+        confidence: 0.80,
+        summary: 'Emergency incident cluster evaluated via fallback protocol.',
+        evidence: ['Emergency cluster reports received'],
+        unknowns: ['AI deep reasoning unavailable', 'Exact casualty count'],
+        status: 'FALLBACK',
       };
     }
   }
@@ -296,7 +319,7 @@ class GemmaService {
 
       if (this._isErrorResponse(response)) {
         return {
-          status: 'QUEUED_FOR_GEMMA4',
+          status: 'QUEUED_FOR_AI',
           capability: 'mergeIncidents',
           model: this.config.hfModel,
           preparedAt: new Date().toISOString(),
@@ -304,14 +327,14 @@ class GemmaService {
       }
 
       return this.parser.parseJson(response, {
-        status: 'QUEUED_FOR_GEMMA4',
+        status: 'QUEUED_FOR_AI',
         capability: 'mergeIncidents',
         mergedResult: {},
       });
     } catch (error) {
       logger.warn('[GemmaService] mergeIncidents fallback active:', error.message);
       return {
-        status: 'QUEUED_FOR_GEMMA4',
+        status: 'QUEUED_FOR_AI',
         capability: 'mergeIncidents',
         model: this.config.hfModel,
         preparedAt: new Date().toISOString(),
@@ -337,7 +360,7 @@ class GemmaService {
 
       if (this._isErrorResponse(response)) {
         return {
-          status: 'QUEUED_FOR_GEMMA4',
+          status: 'QUEUED_FOR_AI',
           capability: 'predictPriority',
           priorityTier: 'P1_CRITICAL',
           priorityScore: 90,
@@ -347,14 +370,14 @@ class GemmaService {
       }
 
       return this.parser.parseJson(response, {
-        status: 'QUEUED_FOR_GEMMA4',
+        status: 'QUEUED_FOR_AI',
         capability: 'predictPriority',
         priorityScore: 85,
       });
     } catch (error) {
       logger.warn('[GemmaService] predictPriority fallback active:', error.message);
       return {
-        status: 'QUEUED_FOR_GEMMA4',
+        status: 'QUEUED_FOR_AI',
         capability: 'predictPriority',
         priorityTier: 'P1_CRITICAL',
         priorityScore: 90,
@@ -382,7 +405,7 @@ class GemmaService {
 
       if (this._isErrorResponse(response)) {
         return {
-          status: 'QUEUED_FOR_GEMMA4',
+          status: 'QUEUED_FOR_AI',
           capability: 'recommendResources',
           recommendations: [
             { type: 'RESCUE_BOAT', quantity: 2 },
@@ -394,14 +417,14 @@ class GemmaService {
       }
 
       return this.parser.parseJson(response, {
-        status: 'QUEUED_FOR_GEMMA4',
+        status: 'QUEUED_FOR_AI',
         capability: 'recommendResources',
         recommendations: [],
       });
     } catch (error) {
       logger.warn('[GemmaService] recommendResources fallback active:', error.message);
       return {
-        status: 'QUEUED_FOR_GEMMA4',
+        status: 'QUEUED_FOR_AI',
         capability: 'recommendResources',
         recommendations: [
           { type: 'RESCUE_BOAT', quantity: 2 },
@@ -421,7 +444,7 @@ class GemmaService {
       logger.info('[GemmaService] Executing generateExplanation interface');
 
       const prompt = this.builder.buildChatPrompt({
-        systemInstruction: 'You are Gemma 4 E4B, the primary AI decision explainability engine for RESONIX AI emergency dispatch. Provide concise, high-clarity reasoning for command personnel.',
+        systemInstruction: 'You are the primary AI decision explainability engine for RESONIX AI emergency dispatch. Provide concise, high-clarity reasoning for command personnel.',
         userInput: decisionData || {},
         context,
       });
@@ -430,7 +453,7 @@ class GemmaService {
 
       if (this._isErrorResponse(response)) {
         return {
-          status: 'QUEUED_FOR_GEMMA4',
+          status: 'QUEUED_FOR_AI',
           capability: 'generateExplanation',
           explanation: 'Gemma 4 architecture queued decision payload for transparent reasoning.',
           model: this.config.hfModel,
@@ -439,14 +462,14 @@ class GemmaService {
       }
 
       return {
-        status: 'QUEUED_FOR_GEMMA4',
+        status: 'QUEUED_FOR_AI',
         capability: 'generateExplanation',
         explanation: this.parser.extractText(response),
       };
     } catch (error) {
       logger.warn('[GemmaService] generateExplanation fallback active:', error.message);
       return {
-        status: 'QUEUED_FOR_GEMMA4',
+        status: 'QUEUED_FOR_AI',
         capability: 'generateExplanation',
         explanation: 'Gemma 4 architecture queued decision payload for transparent reasoning.',
         model: this.config.hfModel,
@@ -507,21 +530,21 @@ class GemmaService {
     if (inputsProcessed.image) sourcesGathered.push('IMAGE');
     if (inputsProcessed.text) sourcesGathered.push('TEXT');
 
-    const primaryDisaster = voiceResult?.disasterType || imageResult?.visibleDisaster || textResult?.disaster || 'FLOOD';
-    const emergencySummary = voiceResult?.summary || textResult?.summary || (imageResult?.visibleDisaster ? `Visual report indicating ${imageResult.visibleDisaster}` : 'Emergency dispatch received.');
-    const severityVal = textResult?.severity || (imageResult?.infrastructureDamage === 'CRITICAL' ? 'CRITICAL' : 'SEVERE');
-    const urgencyVal = voiceResult?.urgency || textResult?.urgency || 'CRITICAL';
-    const peopleVal = voiceResult?.peopleCount || textResult?.people || 4;
-    const childrenVal = voiceResult?.childrenCount || textResult?.children || 1;
+    const primaryDisaster = voiceResult?.disasterType || imageResult?.visibleDisaster || textResult?.disaster || 'OTHER';
+    const emergencySummary = voiceResult?.summary || textResult?.summary || (imageResult?.visibleDisaster ? `Visual report indicating ${imageResult.visibleDisaster}` : 'Emergency report received.');
+    const severityVal = textResult?.severity || (imageResult?.infrastructureDamage === 'CRITICAL' ? 'CRITICAL' : 'HIGH');
+    const urgencyVal = voiceResult?.urgency || textResult?.urgency || 'HIGH';
+    const peopleVal = voiceResult?.peopleCount ?? textResult?.people ?? null;
+    const childrenVal = voiceResult?.childrenCount ?? textResult?.children ?? null;
     const medicalVal = Boolean(voiceResult?.medicalNeed || textResult?.medicalNeeds);
-    const hazardsVal = imageResult?.possibleHazards || voiceResult?.possibleHazards || ['FLASH_FLOOD', 'ELECTROCUTION_RISK'];
+    const hazardsVal = imageResult?.possibleHazards || voiceResult?.possibleHazards || [];
 
     // Generate concise responder-optimized short summary bullet lines
     const shortSummaryLines = [
-      `${primaryDisaster.replace('_', ' ')} reported.`,
-      childrenVal > 0 ? `${childrenVal} children trapped.` : `${peopleVal} people affected.`,
-      medicalVal ? 'Medical assistance required.' : 'Rescue team requested.',
-      hazardsVal.length > 0 ? `${hazardsVal[0].replace('_', ' ')} hazard detected.` : 'Area access restricted.',
+      `${primaryDisaster.replace(/_/g, ' ')} reported.`,
+      childrenVal != null && childrenVal > 0 ? `${childrenVal} children reported.` : (peopleVal != null ? `${peopleVal} people affected.` : 'People count not yet confirmed.'),
+      medicalVal ? 'Medical assistance required.' : 'Emergency team dispatched.',
+      hazardsVal.length > 0 ? `${hazardsVal[0].replace(/_/g, ' ')} hazard detected.` : 'Hazard assessment pending.',
     ];
 
     const shortSummary = shortSummaryLines.join('\n');
@@ -538,21 +561,21 @@ class GemmaService {
       medicalNeeds: medicalVal,
       visualHazards: hazardsVal,
       confidenceScores: {
-        disaster: 0.96,
-        severity: 0.95,
-        people: 0.92,
-        urgency: 0.97,
+        disaster: voiceResult?.confidenceScore ?? textResult?.confidence ?? null,
+        severity: textResult?.confidence ?? null,
+        people: (peopleVal != null) ? (voiceResult?.confidenceScore ?? textResult?.confidence ?? null) : null,
+        urgency: voiceResult?.confidenceScore ?? textResult?.confidence ?? null,
       },
       model: this.config.hfModel,
     };
 
     // Construct Explainable AI (XAI) transparent decision rationales for every extracted field
-    const disasterExplanation = `Disaster classified as ${primaryDisaster.replace('_', ' ')} because multiple descriptions mention ${primaryDisaster === 'FLOOD' ? 'rising water entering homes' : 'severe hazard indicators'}.`;
-    const urgencyExplanation = `Urgency marked ${urgencyVal} because ${childrenVal > 0 ? `${childrenVal} children are reported` : `${peopleVal} people are affected`} and access routes appear blocked.`;
-    const severityExplanation = `Severity assessed as ${severityVal} due to structural risk and trapped occupants.`;
-    const peopleExplanation = `People count estimated at ${peopleVal} based on voice transcript and text report dispatches.`;
-    const medicalExplanation = `Medical need flagged ${medicalVal ? 'Positive' : 'Standard'} due to ${medicalVal ? 'reported injury indicators and immediate rescue request' : 'routine check requirement'}.`;
-    const hazardsExplanation = `Visual hazards identified from photo analysis showing ${hazardsVal.join(', ').toLowerCase().replace(/_/g, ' ')}.`;
+    const disasterExplanation = voiceResult?.reasoning || textResult?.reasoning || `Disaster classified as ${primaryDisaster.replace(/_/g, ' ')} based on available report inputs.`;
+    const urgencyExplanation = `Urgency assessed as ${urgencyVal} based on ${peopleVal != null ? `${peopleVal} people reported affected` : 'available emergency indicators'}.`;
+    const severityExplanation = `Severity assessed as ${severityVal} based on reported conditions.`;
+    const peopleExplanation = peopleVal != null ? `People count: ${peopleVal} based on citizen report.` : 'People count not yet confirmed from citizen report.';
+    const medicalExplanation = `Medical need: ${medicalVal ? 'Requested by citizen' : 'Not explicitly requested'}.`;
+    const hazardsExplanation = hazardsVal.length > 0 ? `Hazards identified: ${hazardsVal.join(', ').toLowerCase().replace(/_/g, ' ')}.` : 'No specific hazards identified yet.';
 
     const explainableAi = {
       disasterExplanation,
@@ -582,42 +605,42 @@ class GemmaService {
       explainableAi,
       primaryDisasterType: {
         value: primaryDisaster,
-        confidence: 0.96,
+        confidence: voiceResult?.confidenceScore ?? textResult?.confidence ?? null,
         sources: sourcesGathered.length > 0 ? sourcesGathered : ['PIPELINE_DEFAULT'],
       },
       summary: {
         value: emergencySummary,
-        confidence: 0.94,
+        confidence: voiceResult?.confidenceScore ?? textResult?.confidence ?? null,
         sources: sourcesGathered.length > 0 ? sourcesGathered : ['PIPELINE_DEFAULT'],
       },
       severity: {
         value: severityVal,
-        confidence: 0.95,
+        confidence: textResult?.confidence ?? null,
         sources: sourcesGathered.length > 0 ? sourcesGathered : ['PIPELINE_DEFAULT'],
       },
       urgencyTier: {
         value: urgencyVal,
-        confidence: 0.97,
+        confidence: voiceResult?.confidenceScore ?? textResult?.confidence ?? null,
         sources: sourcesGathered.length > 0 ? sourcesGathered : ['PIPELINE_DEFAULT'],
       },
       peopleCount: {
         value: peopleVal,
-        confidence: 0.92,
+        confidence: (peopleVal != null) ? (voiceResult?.confidenceScore ?? textResult?.confidence ?? null) : null,
         sources: sourcesGathered.filter((s) => s === 'VOICE' || s === 'TEXT'),
       },
       childrenCount: {
         value: childrenVal,
-        confidence: 0.90,
+        confidence: (childrenVal != null) ? (voiceResult?.confidenceScore ?? textResult?.confidence ?? null) : null,
         sources: sourcesGathered.filter((s) => s === 'VOICE' || s === 'TEXT'),
       },
       medicalNeeds: {
         value: medicalVal,
-        confidence: 0.93,
+        confidence: medicalVal ? (voiceResult?.confidenceScore ?? textResult?.confidence ?? null) : null,
         sources: sourcesGathered.filter((s) => s === 'VOICE' || s === 'TEXT'),
       },
       visualHazards: {
         value: hazardsVal,
-        confidence: 0.91,
+        confidence: hazardsVal.length > 0 ? (imageResult?.confidenceScores?.visibleDisaster ?? voiceResult?.confidenceScore ?? null) : null,
         sources: inputsProcessed.image ? ['IMAGE'] : sourcesGathered,
       },
       locationData: {
@@ -685,7 +708,7 @@ class GemmaService {
         yield this.parser.parseStreamChunk(chunk);
       }
     } catch (err) {
-      yield '[Gemma 4 Stream Chunk Placeholder: Payload prepared for inference]';
+      throw new Error(`AI unavailable: ${err.message}`);
     }
   }
 }

@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/* Global box-sizing ensures padding/borders don't cause overflow at zoomed sizes */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  overflow-x: hidden;
+}
+
 @theme {
   --color-primary: #1b1c1d;
   --color-secondary: #ff5722;
@@ -22,6 +31,199 @@
   --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
 }
 
+/* Light Theme Variables Explicit Mapping */
+:root,
+html.light,
+html:not(.dark) {
+  --color-primary: #1b1c1d;
+  --color-secondary: #ff5722;
+  --color-success: #2e7d32;
+  --color-warning: #f57c00;
+  --color-error: #b71c1c;
+  --color-info: #0288d1;
+  --color-background: #f7f5f2;
+  --color-surface: #ffffff;
+  --color-surface-container: #eae7e3;
+  --color-surface-container-low: #f3f0ec;
+  --color-surface-container-high: #e0dcd7;
+  --color-surface-container-lowest: #ffffff;
+  --color-on-background: #1b1c1d;
+  --color-on-surface: #1b1c1d;
+  --color-on-surface-variant: #4b4640;
+  --color-outline: #7c766f;
+  --color-outline-variant: #cdc6bd;
+}
+
+/* Dark Theme Overrides — Matched with Citizen Black / Very Dark Charcoal Aesthetics */
+html.dark {
+  --color-primary: #fdf8f7;
+  --color-secondary: #ff7043;
+  --color-success: #4caf50;
+  --color-warning: #ffa726;
+  --color-error: #ef5350;
+  --color-info: #29b6f6;
+  --color-background: #11100f;
+  --color-surface: #181716;
+  --color-surface-container: #22201e;
+  --color-surface-container-low: #1c1b1a;
+  --color-surface-container-high: #2c2927;
+  --color-surface-container-lowest: #141312;
+  --color-on-background: #fdf8f7;
+  --color-on-surface: #fdf8f7;
+  --color-on-surface-variant: #b0aba8;
+  --color-outline: #78736d;
+  --color-outline-variant: #3d3936;
+}
+
+/* High Contrast Mode */
+html.high-contrast {
+  --color-primary: #000000;
+  --color-background: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-container: #eeeeee;
+  --color-surface-container-high: #dddddd;
+  --color-on-background: #000000;
+  --color-on-surface: #000000;
+  --color-on-surface-variant: #111111;
+  --color-outline: #000000;
+  --color-outline-variant: #000000;
+}
+
+html.dark.high-contrast {
+  --color-primary: #ffffff;
+  --color-background: #000000;
+  --color-surface: #000000;
+  --color-surface-container: #1a1a1a;
+  --color-surface-container-high: #262626;
+  --color-on-background: #ffffff;
+  --color-on-surface: #ffffff;
+  --color-on-surface-variant: #eeeeee;
+  --color-outline: #ffffff;
+  --color-outline-variant: #ffffff;
+}
+
+/* Font Size Scaling */
+html[data-font-size="normal"] {
+  font-size: 16px;
+}
+
+html[data-font-size="large"] {
+  font-size: 18px;
+}
+
+/* ==========================================================================
+   Sidebar Navigation Active & Inactive High-Contrast Rules
+   ========================================================================== */
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  min-height: 44px;
+  border-left-width: 4px;
+  border-left-style: solid;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+
+/* Active State in Dark Theme (Default): #ffffff text & icon with orange accent */
+html.dark .sidebar-nav-item.active,
+.sidebar-nav-item.active {
+  background-color: var(--color-surface-container) !important;
+  border-left-color: var(--color-secondary) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
+html.dark .sidebar-nav-item.active span,
+html.dark .sidebar-nav-item.active .material-symbols-outlined,
+html.dark .sidebar-nav-item.active svg,
+.sidebar-nav-item.active span,
+.sidebar-nav-item.active .material-symbols-outlined,
+.sidebar-nav-item.active svg {
+  color: #ffffff !important;
+  fill: #ffffff !important;
+}
+
+/* Active State in Light Theme: bold dark text on white card with orange accent */
+html.light .sidebar-nav-item.active {
+  background-color: var(--color-surface) !important;
+  border-left-color: var(--color-secondary) !important;
+  color: var(--color-primary) !important;
+  font-weight: 700 !important;
+}
+
+html.light .sidebar-nav-item.active span,
+html.light .sidebar-nav-item.active .material-symbols-outlined,
+html.light .sidebar-nav-item.active svg {
+  color: var(--color-secondary) !important;
+  fill: var(--color-secondary) !important;
+}
+
+/* Inactive State Styling */
+.sidebar-nav-item:not(.active) {
+  border-left-color: transparent !important;
+  color: var(--color-on-surface-variant) !important;
+  background-color: transparent;
+  font-weight: 500;
+}
+
+.sidebar-nav-item:not(.active) span,
+.sidebar-nav-item:not(.active) .material-symbols-outlined,
+.sidebar-nav-item:not(.active) svg {
+  color: var(--color-on-surface-variant) !important;
+}
+
+.sidebar-nav-item:not(.active):hover {
+  background-color: var(--color-surface-container-high) !important;
+  color: var(--color-primary) !important;
+}
+
+.sidebar-nav-item:not(.active):hover span,
+.sidebar-nav-item:not(.active):hover .material-symbols-outlined,
+.sidebar-nav-item:not(.active):hover svg {
+  color: var(--color-primary) !important;
+}
+
+/* ==========================================================================
+   Settings Selected Option Controls
+   ========================================================================== */
+.btn-setting-selected {
+  background-color: var(--color-secondary) !important;
+  color: #ffffff !important;
+  border-color: var(--color-secondary) !important;
+}
+
+.btn-setting-selected,
+.btn-setting-selected * {
+  color: #ffffff !important;
+}
+
+.btn-setting-selected:hover,
+.btn-setting-selected:focus-visible {
+  background-color: var(--color-secondary) !important;
+  filter: brightness(0.95);
+  color: #ffffff !important;
+}
+
+.btn-setting-selected:hover *,
+.btn-setting-selected:focus-visible * {
+  color: #ffffff !important;
+}
+
+.btn-setting-unselected {
+  background-color: var(--color-surface-container);
+  color: var(--color-primary);
+  border-color: var(--color-outline-variant);
+}
+
+.btn-setting-unselected:hover {
+  background-color: var(--color-surface-container-high);
+  color: var(--color-primary);
+}
+
 :focus-visible {
   outline: 2px solid var(--color-secondary) !important;
   outline-offset: 2px !important;
@@ -34,4 +236,21 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
+  overflow-x: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.22s ease-out forwards;
 }

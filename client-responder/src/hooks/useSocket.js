@@ -12,6 +12,7 @@ import { responderSocketClient } from '../services/socketClient';
  */
 export function useSocket(autoConnect = true) {
   const [isConnected, setIsConnected] = useState(() => responderSocketClient.isConnected);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [lastSocketEvent, setLastSocketEvent] = useState(null);
 
   useEffect(() => {
@@ -20,10 +21,16 @@ export function useSocket(autoConnect = true) {
     }
 
     const unsub = responderSocketClient.onEvent((eventData) => {
-      if (eventData.type === 'SOCKET_CONNECTED') {
+      if (eventData.type === 'SOCKET_CONNECTED' || eventData.type === 'SOCKET_RECONNECTED') {
         setIsConnected(true);
+        setIsReconnecting(false);
       } else if (eventData.type === 'SOCKET_DISCONNECTED') {
         setIsConnected(false);
+      } else if (eventData.type === 'SOCKET_RECONNECTING') {
+        setIsReconnecting(true);
+      } else if (eventData.type === 'SOCKET_STATUS') {
+        setIsConnected(Boolean(eventData.isConnected));
+        setIsReconnecting(Boolean(eventData.isConnecting));
       }
       setLastSocketEvent(eventData);
     });
@@ -47,6 +54,7 @@ export function useSocket(autoConnect = true) {
 
   return {
     isConnected,
+    isReconnecting,
     lastSocketEvent,
     updateIncidentStatus,
     connect,

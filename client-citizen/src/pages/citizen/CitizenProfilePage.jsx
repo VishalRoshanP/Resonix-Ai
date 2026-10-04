@@ -14,16 +14,16 @@ export default function CitizenProfilePage() {
     fullName: citizenUser?.name || '',
     phone: citizenUser?.phone || '',
     email: citizenUser?.email || '',
-    address: citizenUser?.address || 'Flat 402, Sunshine Heights, Koramangala',
-    city: citizenUser?.city || 'Bengaluru, Karnataka',
+    address: citizenUser?.address || '',
+    city: citizenUser?.city || '',
     autoShareGps: citizenUser?.autoShareGps !== undefined ? citizenUser.autoShareGps : true,
-    emergencyContactName: citizenUser?.emergencyContactName || 'Mary Johnson (Mother)',
-    emergencyContactPhone: citizenUser?.emergencyContactPhone || '+91 98765 00000',
-    secondaryContactName: citizenUser?.secondaryContactName || 'David Johnson (Brother)',
-    secondaryContactPhone: citizenUser?.secondaryContactPhone || '+91 98765 11111',
-    bloodGroup: citizenUser?.bloodGroup || 'O+',
+    emergencyContactName: citizenUser?.emergencyContactName || '',
+    emergencyContactPhone: citizenUser?.emergencyContactPhone || '',
+    secondaryContactName: citizenUser?.secondaryContactName || '',
+    secondaryContactPhone: citizenUser?.secondaryContactPhone || '',
+    bloodGroup: citizenUser?.bloodGroup || '',
     preferredLanguage: citizenUser?.language || citizenUser?.preferredLanguage || 'English',
-    medicalConditions: citizenUser?.medicalConditions || 'Mild Asthma, Penicillin Allergy',
+    medicalConditions: citizenUser?.medicalConditions || '',
   });
 
   const [avatarPreview, setAvatarPreview] = useState(citizenUser?.avatarUrl || null);
@@ -31,7 +31,16 @@ export default function CitizenProfilePage() {
   const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [emergencyHistory, setEmergencyHistory] = useState([]);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    import('../../services/sqliteStorageEngine').then(({ sqliteStorageEngine }) => {
+      sqliteStorageEngine.getAllSOS().then((records) => {
+        setEmergencyHistory(records || []);
+      }).catch(() => setEmergencyHistory([]));
+    });
+  }, []);
 
   // Synchronize profile data when citizenUser updates
   useEffect(() => {
@@ -72,26 +81,6 @@ export default function CitizenProfilePage() {
   ];
 
   const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-
-  // Mock Emergency History Log for Registered Citizens
-  const EMERGENCY_HISTORY = [
-    {
-      id: 'pkt_177212001',
-      date: '2026-07-28 14:32',
-      category: 'FLOOD',
-      location: '12.9716° N, 77.5946° E',
-      status: 'RESOLVED',
-      statusColor: 'bg-success/15 border-success text-success',
-    },
-    {
-      id: 'pkt_177209844',
-      date: '2026-06-15 09:10',
-      category: 'MEDICAL',
-      location: '12.9352° N, 77.6245° E',
-      status: 'COMPLETED',
-      statusColor: 'bg-secondary/15 border-secondary text-secondary',
-    },
-  ];
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -546,20 +535,26 @@ export default function CitizenProfilePage() {
                 <span>Transmitted Emergency SOS History</span>
               </h2>
 
-              {EMERGENCY_HISTORY.map((item) => (
-                <div key={item.id} className="p-3 rounded-xl bg-surface-container border border-outline-variant flex items-center justify-between gap-2 min-w-0">
-                  <div className="space-y-0.5 min-w-0 flex-1">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-extrabold text-primary text-xs truncate">{item.category}</span>
-                      <span className="text-[10px] font-mono text-on-surface-variant shrink-0">{item.id}</span>
-                    </div>
-                    <p className="text-[10px] text-on-surface-variant truncate">{item.date} • {item.location}</p>
-                  </div>
-                  <span className={`text-[10px] font-mono font-extrabold px-2 py-0.5 rounded-md border shrink-0 ${item.statusColor}`}>
-                    {item.status}
-                  </span>
+              {emergencyHistory.length === 0 ? (
+                <div className="p-6 text-center text-on-surface-variant text-xs font-medium bg-surface-container/50 rounded-xl border border-outline-variant/40">
+                  No emergency reports found.
                 </div>
-              ))}
+              ) : (
+                emergencyHistory.map((item) => (
+                  <div key={item.sosId || item.packetId} className="p-3 rounded-xl bg-surface-container border border-outline-variant flex items-center justify-between gap-2 min-w-0">
+                    <div className="space-y-0.5 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-extrabold text-primary text-xs truncate">{item.priority || 'EMERGENCY'}</span>
+                        <span className="text-[10px] font-mono text-on-surface-variant shrink-0">{item.sosId || item.packetId}</span>
+                      </div>
+                      <p className="text-[10px] text-on-surface-variant truncate">{item.timestamp ? new Date(item.timestamp).toLocaleString() : 'Date N/A'} • {item.address || (item.latitude ? `${item.latitude}, ${item.longitude}` : 'Location unavailable')}</p>
+                    </div>
+                    <span className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded-md border shrink-0 bg-secondary/15 border-secondary text-secondary">
+                      {item.deliveryStatus || 'QUEUED'}
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           )}
 

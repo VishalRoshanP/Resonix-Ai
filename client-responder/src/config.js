@@ -11,11 +11,11 @@ export const config = {
     incidentManagement: true,
     resourceDispatching: true,
     predictiveAnalytics: true,
-    mockFallback: env.isMockEnabled,
+    mockFallback: false,
   },
   geoDefaults: {
-    lat: 12.9716,
-    lng: 77.5946,
-    city: 'Bengaluru Command Operations HQ',
+    lat: null,
+    lng: null,
+    city: 'Resonix Operations Command Center',
   },
 };

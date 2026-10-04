@@ -1,115 +1,416 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { citizenApi } from '../../services/api';
-import { transmitPacketToBackend } from '../../services/emergencyPacketManager';
+import { transmitPacketToBackend, removeLocalPacket, getLocalPackets } from '../../services/emergencyPacketManager';
+import { offlineCommunicationService } from '../../services/offlineCommunicationService';
 import LocationDetectorWidget from '../../components/location/LocationDetectorWidget';
 import NetworkStatusWidget from '../../components/network/NetworkStatusWidget';
-import EmergencyReportModal from '../../components/emergency/EmergencyReportModal';
+import EmergencyAcknowledgementModal, { isIncidentAcknowledged, markIncidentAcknowledged } from '../../components/emergency/EmergencyAcknowledgementModal';
+import { citizenSocketClient } from '../../services/socketClient';
+import LiveWeatherCard from '../../components/cards/LiveWeatherCard';
+import ExtremeWeatherAlertBanner from '../../components/alerts/ExtremeWeatherAlertBanner';
 import Card from '../../components/ui/Card';
+
+// Helper to retrieve the current active incident from localStorage or local offline queue
+const getStoredActiveIncident = () => {
+  let stored = null;
+  try {
+    const raw = localStorage.getItem('resonix_active_incident');
+    if (raw) {
+      stored = JSON.parse(raw);
+    }
+  } catch (_) {}
+
+  // If status in stored incident is terminal (resolved, completed, closed, cancelled), do not treat as active
+  if (stored) {
+    const s = String(stored.status || '').toUpperCase();
+    if (s === 'RESOLVED' || s === 'COMPLETED' || s === 'CLOSED' || s === 'CANCELLED') {
+      return null;
+    }
+    if (stored.packetId || stored.clientRequestId || stored.incidentId) {
+      return stored;
+    }
+  }
+
+  // Check if there is an unsent offline packet in local queue
+  try {
+    const lastPacketId = localStorage.getItem('resonix_last_packet_id');
+    const lastClientReqId = localStorage.getItem('resonix_last_client_request_id');
+    const localQueue = getLocalPackets();
+    if (Array.isArray(localQueue) && localQueue.length > 0) {
+      const matchingLocal = localQueue.find(
+        (p) => p.packetId === lastPacketId || p.clientRequestId === lastClientReqId
+      ) || localQueue[0];
+      if (matchingLocal) {
+        return {
+          packetId: matchingLocal.packetId,
+          clientRequestId: matchingLocal.clientRequestId,
+          incidentId: matchingLocal.packetId,
+          category: matchingLocal.category || 'EMERGENCY',
+          location: matchingLocal.gpsCoordinates?.latitude != null
+            ? `GPS: ${matchingLocal.gpsCoordinates.latitude.toFixed(4)}, ${matchingLocal.gpsCoordinates.longitude.toFixed(4)}`
+            : 'Live Telemetry Sector',
+          gpsCoordinates: matchingLocal.gpsCoordinates,
+          timestamp: matchingLocal.timestamp || new Date().toISOString(),
+          offline: true,
+          status: 'QUEUED_LOCAL',
+        };
+      }
+    }
+  } catch (_) {}
+
+  return null;
+};
 
 export default function CitizenHomePage() {
   const { citizenUser, isCitizenGuest, guestId } = useAuth();
+  const { settings, sosCountdownSeconds } = useSettings();
+
+  const initialActiveIncident = getStoredActiveIncident();
 
   // Emergency States
-  // 'IDLE' | 'DISPATCHED' | 'CANCELLING' | 'CANCELLED'
-  const [sosState, setSosState] = useState('IDLE');
-  const [sosTimer, setSosTimer] = useState(0);
-  const [showReportModal, setShowReportModal] = useState(false);
+  // 'IDLE' | 'DISPATCHED' | 'CANCELLING'
+  const [sosState, setSosState] = useState(() => (
+    initialActiveIncident ? 'DISPATCHED' : 'IDLE'
+  ));
+  const [lastSubmittedPacket, setLastSubmittedPacket] = useState(() => initialActiveIncident);
+  const [clientRequestId, setClientRequestId] = useState(() => (
+    initialActiveIncident?.clientRequestId || initialActiveIncident?.packetId || null
+  ));
+  const [sosTimer, setSosTimer] = useState(() => {
+    if (initialActiveIncident?.timestamp) {
+      const elapsed = Math.floor((Date.now() - new Date(initialActiveIncident.timestamp).getTime()) / 1000);
+      return elapsed > 0 ? elapsed : 0;
+    }
+    return 0;
+  });
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
-  const [lastSubmittedPacket, setLastSubmittedPacket] = useState(null);
-  const [sosPressed, setSosPressed] = useState(false);
+  const [completedNotice, setCompletedNotice] = useState(null);
+
+  // Performance & Non-UI State Refs
+  const lastSubmittedPacketRef = useRef(lastSubmittedPacket);
+  const clientRequestIdRef = useRef(null);
+  const sosDispatchIntervalRef = useRef(null);
+  const toastTimerRef = useRef(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    lastSubmittedPacketRef.current = lastSubmittedPacket;
+  }, [lastSubmittedPacket]);
+
+  // Audio Emergency Chime Tone
+  const playEmergencyTone = () => {
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+      const audioCtx = new AudioContextClass();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.35);
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.35);
+    } catch (_) {}
+  };
+
+  // Citizen Acknowledgement Modal State
+  const [acknowledgementData, setAcknowledgementData] = useState(null);
+  const [showAcknowledgementModal, setShowAcknowledgementModal] = useState(false);
 
   // SOS Dispatch Timer Effect
   useEffect(() => {
-    let interval;
+    if (sosDispatchIntervalRef.current) clearInterval(sosDispatchIntervalRef.current);
     if (sosState === 'DISPATCHED') {
-      interval = setInterval(() => {
+      sosDispatchIntervalRef.current = setInterval(() => {
         setSosTimer((prev) => prev + 1);
       }, 1000);
     } else if (sosState !== 'DISPATCHED') {
       // Only reset timer when not dispatched
       if (sosState === 'IDLE') setSosTimer(0);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (sosDispatchIntervalRef.current) clearInterval(sosDispatchIntervalRef.current);
+    };
   }, [sosState]);
 
-  // Handle SOS Button Press (Instant UI Response)
-  const handleSOSPress = () => {
-    console.log("STEP 2 - HANDLE SOS EXECUTED");
-    if (sosState === 'CANCELLED') {
-      // Allow re-submission after cancellation
-      setSosState('IDLE');
-      setLastSubmittedPacket(null);
-      setSosTimer(0);
+  const [acknowledgementState, setAcknowledgementState] = useState({ status: 'UNACKNOWLEDGED' });
+  const [isStatusChanging, setIsStatusChanging] = useState(false);
+  const prevAckStatusRef = useRef(acknowledgementState?.status);
+
+  useEffect(() => {
+    if (prevAckStatusRef.current !== acknowledgementState?.status) {
+      prevAckStatusRef.current = acknowledgementState?.status;
+      setIsStatusChanging(true);
+      const timer = setTimeout(() => setIsStatusChanging(false), 450);
+      return () => clearTimeout(timer);
     }
+  }, [acknowledgementState?.status]);
 
-    // 1. Open SOS UI Modal IMMEDIATELY without waiting for network or imports (0ms UI latency)
-    setSosPressed(true);
-    setShowReportModal(true);
+  useEffect(() => {
+    clientRequestIdRef.current = clientRequestId;
+  }, [clientRequestId]);
 
-    setTimeout(() => {
-      setSosPressed(false);
-    }, 150);
+  // Refresh safety: Query real status from backend on mount, packet update, and periodic polling while dispatched
+  useEffect(() => {
+    let isMounted = true;
+    const activeId = lastSubmittedPacket?.incidentId || lastSubmittedPacket?.packetId || lastSubmittedPacket?.clientRequestId || clientRequestId;
+    if (activeId && sosState === 'DISPATCHED') {
+      const checkStatus = () => {
+        citizenApi.getEmergencyStatus(activeId)
+          .then((res) => {
+            if (!isMounted) return;
+            const pkt = res?.packet || res?.data?.packet || res?.data?.incident || res?.data;
+            if (pkt) {
+              const srvStatus = String(pkt.status || '').toUpperCase();
+              if (srvStatus === 'RESOLVED' || srvStatus === 'COMPLETED' || srvStatus === 'CLOSED' || srvStatus === 'CANCELLED') {
+                const completedTime = pkt.completedAt || new Date().toISOString();
+                const resolutionNotes = pkt.resolutionSummary || pkt.completionNotes || 'Emergency resolved by response unit';
+                try {
+                  const currentStored = JSON.parse(localStorage.getItem('resonix_active_incident') || '{}');
+                  const updatedStored = {
+                    ...currentStored,
+                    status: srvStatus,
+                    completedAt: completedTime,
+                    completedBy: pkt.completedBy || 'Command Officer',
+                    completionNotes: resolutionNotes,
+                    resolutionSummary: resolutionNotes,
+                  };
+                  localStorage.setItem('resonix_active_incident', JSON.stringify(updatedStored));
+                } catch (_) {}
+                if (srvStatus === 'RESOLVED' || srvStatus === 'COMPLETED') {
+                  setCompletedNotice({
+                    status: srvStatus,
+                    completedAt: completedTime,
+                    resolutionSummary: resolutionNotes,
+                  });
+                }
+                setSosState('IDLE');
+                setLastSubmittedPacket(null);
+                setClientRequestId(null);
+                setSosTimer(0);
+                setToastMessage(`✓ Emergency alert ${srvStatus.toLowerCase()} by response team. Ready for new report.`);
+                return;
+              }
 
-    // 2. Asynchronously build and transmit emergency SOS packet in background (Non-blocking)
-    (async () => {
-      try {
-        const { buildEmergencyPacket } = await import('../../services/emergencyPacketManager');
-        const packet = buildEmergencyPacket({
-          category: 'CRITICAL',
-          description: 'Instant Emergency SOS signal triggered by citizen',
-          user: isCitizenGuest ? null : citizenUser,
-          isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
-        });
+              if (pkt.acknowledgement) {
+                setAcknowledgementState(pkt.acknowledgement);
+              }
 
-        console.log('==================================================');
-        console.log('🚨 [CitizenHomePage] INSTANT SOS BUTTON CLICKED!');
-        console.log(`• Packet ID: ${packet.packetId}`);
-        console.log('• Initiating immediate HTTP POST request to backend...');
-        console.log('==================================================');
+              // Sync localStorage cache with authoritative server record
+              try {
+                const currentStored = JSON.parse(localStorage.getItem('resonix_active_incident') || '{}');
+                localStorage.setItem('resonix_active_incident', JSON.stringify({ ...currentStored, ...pkt }));
+              } catch (_) {}
+            }
+          })
+          .catch(() => {});
+      };
 
-        // Execute POST request to /api/v1/emergency/create
-        await transmitPacketToBackend(packet, citizenApi.sendSOS);
+      checkStatus();
+      const pollInterval = setInterval(checkStatus, 8000);
+      return () => {
+        isMounted = false;
+        clearInterval(pollInterval);
+      };
+    }
+    return () => { isMounted = false; };
+  }, [lastSubmittedPacket, clientRequestId, sosState]);
 
-        handlePacketSubmitted(packet);
-      } catch (err) {
-        console.warn('[CitizenHomePage] Instant SOS transmission note:', err.message);
-      }
-    })();
-  };
+  // Real-time Socket.IO listener for responder acknowledgement and status updates
+  useEffect(() => {
+    try {
+      const userId = isCitizenGuest ? guestId || 'usr_guest' : citizenUser?.id || 'usr_citizen';
+      citizenSocketClient.connect(userId);
 
-  // Callback when EmergencyReportModal submits packet
-  const handlePacketSubmitted = (packet) => {
-    setLastSubmittedPacket(packet);
-    setSosState('DISPATCHED');
-    setToastMessage(`🚨 Emergency Packet ${packet.packetId} Transmitted! Rescue squad en route.`);
-  };
+      const unsubscribe = citizenSocketClient.onEvent((event) => {
+        if (!event || !event.type) return;
+
+        const isAckEvent = event.type === 'INCIDENT_ACKNOWLEDGED' || event.type === 'INCIDENT_UPDATED' || event.type === 'SOS_CONFIRMED';
+        if (!isAckEvent) return;
+
+        const incoming = event.incident || event.packet || event;
+        const incomingAck = incoming?.acknowledgement || event.acknowledgement;
+        const incomingStatus = String(incoming?.status || event.status || '').toUpperCase();
+
+        const curPacket = lastSubmittedPacketRef.current;
+        const curReqId = clientRequestIdRef.current;
+        let storedActive = null;
+        try {
+          storedActive = JSON.parse(localStorage.getItem('resonix_active_incident') || '{}');
+        } catch (_) {}
+
+        const myIds = [
+          curPacket?.clientRequestId,
+          curPacket?.packetId,
+          curPacket?.incidentId,
+          curPacket?._id,
+          storedActive?.clientRequestId,
+          storedActive?.packetId,
+          storedActive?.incidentId,
+          storedActive?._id,
+          curReqId,
+        ].map((v) => (v ? String(v).trim() : '')).filter(Boolean);
+
+        if (myIds.length > 0) {
+          const incIds = [
+            event.clientRequestId,
+            event.packetId,
+            event.incidentId,
+            event._id,
+            event.id,
+            incoming.clientRequestId,
+            incoming.packetId,
+            incoming.incidentId,
+            incoming._id,
+            incoming.id,
+          ].map((v) => (v ? String(v).trim() : '')).filter(Boolean);
+
+          const isMatch = myIds.some((myId) =>
+            incIds.some((id) => id === myId || id.includes(myId) || myId.includes(id) || (id.length >= 6 && myId.length >= 6 && (id.endsWith(myId) || myId.endsWith(id))))
+          );
+
+          if (isMatch) {
+            // Check for terminal status update (RESOLVED, COMPLETED, CLOSED, CANCELLED)
+            if (['RESOLVED', 'COMPLETED', 'CLOSED', 'CANCELLED'].includes(incomingStatus)) {
+              console.log('CITIZEN: TERMINAL STATUS RECEIVED', incomingStatus);
+              const completedTime = incoming?.completedAt || event.completedAt || new Date().toISOString();
+              const resolutionNotes = incoming?.resolutionSummary || incoming?.completionNotes || event.resolutionSummary || event.completionNotes || 'Emergency resolved by response unit';
+              try {
+                const currentStored = JSON.parse(localStorage.getItem('resonix_active_incident') || '{}');
+                const updatedStored = {
+                  ...currentStored,
+                  status: incomingStatus,
+                  completedAt: completedTime,
+                  completedBy: incoming?.completedBy || event.completedBy || 'Command Officer',
+                  completionNotes: resolutionNotes,
+                  resolutionSummary: resolutionNotes,
+                };
+                localStorage.setItem('resonix_active_incident', JSON.stringify(updatedStored));
+              } catch (_) {}
+              if (incomingStatus === 'RESOLVED' || incomingStatus === 'COMPLETED') {
+                setCompletedNotice({
+                  status: incomingStatus,
+                  completedAt: completedTime,
+                  resolutionSummary: resolutionNotes,
+                });
+              }
+              setSosState('IDLE');
+              setLastSubmittedPacket(null);
+              setClientRequestId(null);
+              setSosTimer(0);
+              setToastMessage(`✓ Emergency alert ${incomingStatus.toLowerCase()} by response team. Home is ready for a new report.`);
+              return;
+            }
+
+            if (incomingAck) {
+              console.log('CITIZEN: ACK RECEIVED', myId);
+              setAcknowledgementState(incomingAck);
+              console.log('CITIZEN: ACK STATE UPDATED', incomingAck);
+
+              if (incomingAck.status === 'ACKNOWLEDGED') {
+                setToastMessage('✓ Response Team Has Seen Your Alert');
+                if (!isIncidentAcknowledged(myId)) {
+                  markIncidentAcknowledged(myId);
+                  setAcknowledgementData({
+                    alertId: myId,
+                    status: 'ACTIVE',
+                    location: curPacket?.gpsCoordinates?.latitude != null
+                      ? `GPS: ${curPacket.gpsCoordinates.latitude.toFixed(4)}, ${curPacket.gpsCoordinates.longitude.toFixed(4)}`
+                      : 'Live Telemetry Sector',
+                    category: curPacket?.category || 'EMERGENCY',
+                  });
+                  setShowAcknowledgementModal(true);
+                }
+              }
+            }
+          }
+        }
+      });
+
+      return () => {
+        if (unsubscribe) unsubscribe();
+      };
+    } catch (err) {
+      console.error('[CitizenHomePage] Socket listener error:', err);
+    }
+  }, [isCitizenGuest, guestId, citizenUser]);
+
+  // Clean up timeouts on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (sosDispatchIntervalRef.current) clearInterval(sosDispatchIntervalRef.current);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   // Cancel SOS request
   const handleCancelRequest = async () => {
+    if (isCancelling) return;
+    setIsCancelling(true);
     setShowCancelConfirm(false);
     setSosState('CANCELLING');
 
+    const targetPacketId = lastSubmittedPacket?.incidentId || lastSubmittedPacket?._id || lastSubmittedPacket?.packetId || clientRequestId;
+
     try {
       // Use existing PUT /api/v1/incidents/:id to update status to 'cancelled'
-      if (lastSubmittedPacket?.packetId) {
-        await citizenApi.cancelSOS(lastSubmittedPacket.packetId);
+      if (targetPacketId) {
+        await citizenApi.cancelSOS(targetPacketId);
       }
     } catch (err) {
       // Even if backend call fails (e.g. no matching DB record), proceed with client-side cancellation
       console.warn('[CitizenHomePage] Cancel API call failed (non-blocking):', err.message);
     }
 
-    // Brief loading delay for UX feedback
-    await new Promise((r) => setTimeout(r, 600));
+    // Immediately remove from local offline & relay queues so background loop never re-uploads
+    if (targetPacketId) {
+      removeLocalPacket(targetPacketId);
+      if (offlineCommunicationService) {
+        offlineCommunicationService.updateMessageStatus(targetPacketId, 'CANCELLED');
+        offlineCommunicationService.removeMessage(targetPacketId);
+      }
+    }
 
-    setSosState('CANCELLED');
-    setToastMessage('');
+    // Clear active incident pointer so Home returns to READY and user can submit a new SOS
+    try {
+      localStorage.removeItem('resonix_active_incident');
+      localStorage.removeItem('resonix_last_packet_id');
+      localStorage.removeItem('resonix_last_client_request_id');
+    } catch (_) {}
+
+    // Brief loading delay for UX feedback
+    await new Promise((r) => setTimeout(r, 350));
+
+    setSosState('IDLE');
+    setLastSubmittedPacket(null);
+    setClientRequestId(null);
+    setSosTimer(0);
+    setToastMessage('✓ Emergency alert cancelled. Ready to submit a new emergency report.');
+    setIsCancelling(false);
   };
 
-  // Determine if cancellation is allowed (before dispatch/en-route)
-  const isCancellable = sosState === 'DISPATCHED' && sosTimer < 300; // Allow within 5 minutes
+  // Operational unit dispatch check (responder squad has been assigned or en route)
+  const isFieldUnitDispatched = Boolean(
+    lastSubmittedPacket?.assignedUnit ||
+    (Array.isArray(lastSubmittedPacket?.assignedResponders) && lastSubmittedPacket.assignedResponders.length > 0) ||
+    lastSubmittedPacket?.responseLifecycle?.dispatchTime ||
+    ['EN_ROUTE', 'ON_SCENE', 'IN_PROGRESS'].includes(String(lastSubmittedPacket?.status || '').toUpperCase())
+  );
+
+  // Determine if cancellation is allowed
+  // Citizens can always cancel an active emergency report; if field units are already dispatched,
+  // the confirmation dialog informs them that responding units will stand down.
+  const isCancellable = sosState === 'DISPATCHED';
 
   // Format Timer SS or MM:SS
   const formatSec = (secs) => {
@@ -142,6 +443,12 @@ export default function CitizenHomePage() {
         <NetworkStatusWidget />
       </div>
 
+      {/* Extreme Weather Alert Engine Banner (SIH26068) */}
+      <ExtremeWeatherAlertBanner />
+
+      {/* Live Atmospheric Conditions & Disaster Weather Alert (SIH26068) */}
+      <LiveWeatherCard />
+
       {/* Live Rescue Dispatch Status Banner */}
       <div
         className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 transition-all duration-300 min-w-0 ${
@@ -157,7 +464,7 @@ export default function CitizenHomePage() {
         <div className="flex items-center gap-2.5">
           <div
             className={`w-3 h-3 rounded-full transition-colors ${
-              sosState === 'DISPATCHED' ? 'bg-error animate-ping'
+              sosState === 'DISPATCHED' ? 'bg-error animate-calm-dot'
               : sosState === 'CANCELLING' ? 'bg-secondary animate-pulse'
               : sosState === 'CANCELLED' ? 'bg-on-surface-variant/40'
               : 'bg-success'
@@ -189,15 +496,68 @@ export default function CitizenHomePage() {
             ACTIVE
           </span>
         )}
-        {sosState === 'CANCELLED' && (
-          <span className="text-xs font-mono font-extrabold px-2 py-0.5 bg-on-surface-variant/15 text-on-surface-variant rounded-md">
-            CANCELLED
-          </span>
-        )}
       </div>
 
+      {/* RESPONSE STATUS SECTION */}
+      {sosState === 'DISPATCHED' && (
+        <div
+          className={`p-3.5 rounded-xl border flex flex-col gap-1.5 transition-all duration-300 shadow-sm ${
+            isStatusChanging ? 'animate-state-change' : ''
+          } ${
+            acknowledgementState?.status === 'ACKNOWLEDGED'
+              ? 'bg-success/15 border-success/40 text-success'
+              : 'bg-surface-container border-outline-variant/60 text-on-surface-variant'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono font-extrabold uppercase tracking-wider text-on-surface-variant/80">
+              RESPONSE STATUS
+            </span>
+            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md ${
+              acknowledgementState?.status === 'ACKNOWLEDGED'
+                ? 'bg-success text-white'
+                : 'bg-surface-container-high text-on-surface-variant'
+            }`}>
+              {acknowledgementState?.status === 'ACKNOWLEDGED' ? 'ACKNOWLEDGED' : 'WAITING'}
+            </span>
+          </div>
+
+          <div className="flex items-start gap-2.5 pt-0.5">
+            <div className="pt-0.5 shrink-0">
+              {acknowledgementState?.status === 'ACKNOWLEDGED' ? (
+                <span className="material-symbols-outlined text-success text-xl animate-gps-check">check_circle</span>
+              ) : (
+                <span className="material-symbols-outlined text-amber-500 text-xl">schedule</span>
+              )}
+            </div>
+            <div>
+              <p className={`text-xs font-black leading-tight ${
+                acknowledgementState?.status === 'ACKNOWLEDGED' ? 'text-success' : 'text-primary'
+              }`}>
+                {acknowledgementState?.status === 'ACKNOWLEDGED'
+                  ? '✓ Response Team Has Seen Your Alert'
+                  : 'Waiting for responder acknowledgement'}
+              </p>
+              <p className="text-[10px] text-on-surface-variant mt-1 font-medium leading-relaxed">
+                {acknowledgementState?.status === 'ACKNOWLEDGED'
+                  ? 'Your emergency alert has been acknowledged. Help is being coordinated.'
+                  : 'First responders have been notified of your emergency.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Field unit dispatch info notice (informational, does not block cancellation) */}
+      {sosState === 'DISPATCHED' && isFieldUnitDispatched && (
+        <div className="p-3 rounded-xl bg-surface-container border border-outline-variant/60 flex items-center gap-2 text-[11px] text-on-surface-variant">
+          <span className="material-symbols-outlined text-base text-secondary shrink-0">local_shipping</span>
+          <span>Emergency response units have been dispatched and are responding.</span>
+        </div>
+      )}
+
       {/* ================================================================ */}
-      {/* CANCEL EMERGENCY REQUEST — Shown only when cancellable */}
+      {/* CANCEL EMERGENCY REQUEST — Always available while active */}
       {/* ================================================================ */}
       {isCancellable && (
         <button
@@ -211,14 +571,6 @@ export default function CitizenHomePage() {
         </button>
       )}
 
-      {/* Post-dispatch non-cancellable notice */}
-      {sosState === 'DISPATCHED' && !isCancellable && (
-        <div className="p-3 rounded-xl bg-surface-container border border-outline-variant/60 flex items-center gap-2 text-[11px] text-on-surface-variant">
-          <span className="material-symbols-outlined text-base text-secondary shrink-0">verified</span>
-          <span>Emergency services have already been dispatched. This request can no longer be cancelled.</span>
-        </div>
-      )}
-
       {/* Cancelled — success message */}
       {sosState === 'CANCELLED' && (
         <div className="p-3.5 rounded-xl bg-success/8 border border-success/25 space-y-2 animate-fade-in">
@@ -227,156 +579,32 @@ export default function CitizenHomePage() {
             <span>Your emergency request has been cancelled successfully.</span>
           </div>
           <p className="text-[10px] text-on-surface-variant leading-relaxed pl-6">
-            If you cancelled by mistake, tap the SOS button below to submit a new emergency report.
+            If you cancelled by mistake, tap the SOS tab to submit a new emergency report.
           </p>
         </div>
       )}
 
-      {/* ================================================================ */}
-      {/* HERO SOS SECTION — Professional Emergency Response Design */}
-      {/* ================================================================ */}
-      <Card className={`py-8 px-6 text-center space-y-5 border shadow-lg relative overflow-hidden transition-all duration-300 ${
-        sosState === 'CANCELLED'
-          ? 'border-outline-variant/30 bg-surface'
-          : 'border-outline-variant/40 bg-surface'
-      }`}>
-        {/* Dispatched Glow Background */}
-        {sosState === 'DISPATCHED' && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-56 h-56 rounded-full bg-error/15 animate-pulse opacity-80" />
-          </div>
-        )}
-
-        <div className="relative z-10 flex flex-col items-center justify-center">
-
-          {/* SOS Button with Breathing Glow */}
-          <div className="relative flex items-center justify-center">
-            {/* Outer Glow Ring (Slow breathing pulse — subtle, 3s cycle) */}
-            {sosState === 'IDLE' && (
-              <div className="absolute w-44 h-44 rounded-full border-2 border-error/20 animate-sos-glow-ring pointer-events-none" />
-            )}
-
-            {/* Main SOS Button */}
+      {/* Rescue Completed — authoritative confirmation banner */}
+      {completedNotice && (
+        <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-2 animate-fade-in">
+          <div className="flex items-center justify-between gap-2 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">task_alt</span>
+              <span>✓ Rescue Operation Marked as Complete</span>
+            </div>
             <button
-              onClick={() => {
-                console.log("STEP 1 - SOS BUTTON CLICKED");
-                handleSOSPress();
-              }}
-              disabled={sosState === 'CANCELLING'}
-              className={`w-36 h-36 rounded-full flex flex-col items-center justify-center transition-all duration-200 cursor-pointer border-4 focus:outline-none focus-visible:ring-4 focus-visible:ring-error/50 ${
-                sosState === 'DISPATCHED'
-                  ? 'bg-error text-white border-white/50 animate-pulse shadow-[0_0_40px_rgba(220,38,38,0.35)]'
-                  : sosState === 'CANCELLING'
-                  ? 'bg-gray-400 text-white/70 border-white/20 cursor-not-allowed shadow-md'
-                  : sosState === 'CANCELLED'
-                  ? 'bg-gradient-to-b from-red-500 to-red-700 text-white border-white/25 hover:shadow-[0_8px_32px_rgba(220,38,38,0.3)] hover:scale-[1.03] active:scale-95 animate-sos-breathe'
-                  : sosPressed
-                  ? 'bg-red-700 text-white border-white/30 scale-95 animate-sos-ripple shadow-lg'
-                  : 'bg-gradient-to-b from-red-500 to-red-700 text-white border-white/25 hover:shadow-[0_8px_32px_rgba(220,38,38,0.3)] hover:scale-[1.03] active:scale-95 animate-sos-breathe'
-              }`}
-              aria-label="Tap for Emergency SOS"
+              type="button"
+              onClick={() => setCompletedNotice(null)}
+              className="text-[10px] text-on-surface-variant hover:text-primary font-bold px-2 py-0.5 rounded bg-surface border border-outline-variant/60 cursor-pointer"
             >
-              <span className="material-symbols-outlined text-5xl font-black mb-0.5 drop-shadow-sm">
-                {sosState === 'DISPATCHED' ? 'emergency_home'
-                 : sosState === 'CANCELLING' ? 'hourglass_top'
-                 : 'emergency'}
-              </span>
-              <span className="text-2xl font-black tracking-tight leading-none drop-shadow-sm">
-                {sosState === 'DISPATCHED' ? 'ACTIVE'
-                 : sosState === 'CANCELLING' ? '...'
-                 : 'SOS'}
-              </span>
-              <span className="text-[10px] font-bold tracking-wider mt-1 opacity-90">
-                {sosState === 'DISPATCHED' ? 'DISPATCHED'
-                 : sosState === 'CANCELLING' ? 'Cancelling'
-                 : 'Emergency Alert'}
-              </span>
+              Dismiss
             </button>
           </div>
-
-          {/* Primary Message */}
-          <p className="text-sm font-bold text-primary mt-4">
-            {sosState === 'DISPATCHED'
-              ? '🚨 Alert Active — First Responders Notified'
-              : sosState === 'CANCELLING'
-              ? 'Cancelling your emergency request...'
-              : sosState === 'CANCELLED'
-              ? 'Tap SOS to submit a new emergency report'
-              : 'Tap SOS to Report an Emergency'}
+          <p className="text-[10px] text-on-surface-variant leading-relaxed pl-6">
+            {completedNotice.resolutionSummary || 'Emergency response team has successfully resolved and closed this incident. You can tap the SOS tab to submit a new emergency report at any time.'}
           </p>
-
-          {/* Secondary Message */}
-          <p className="text-[11px] text-on-surface-variant leading-snug max-w-[280px]">
-            {sosState === 'DISPATCHED'
-              ? `Category: ${lastSubmittedPacket?.category || 'CRITICAL'} • Response time: ${formatSec(sosTimer)}`
-              : sosState === 'CANCELLING'
-              ? 'Please wait while we process your cancellation.'
-              : sosState === 'CANCELLED'
-              ? 'Your previous request has been cancelled. Submit a new one if you still need assistance.'
-              : isCitizenGuest
-              ? 'Guest mode supported. No sign-in required.'
-              : 'Voice, photo, and emergency details can be added after pressing SOS.'}
-          </p>
-
-          {/* Status Chips */}
-          {(sosState === 'IDLE' || sosState === 'CANCELLED') && (
-            <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-success/10 border border-success/25 text-[10px] font-bold text-success">
-                <span className="material-symbols-outlined text-xs">my_location</span>
-                GPS Ready
-              </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary/10 border border-secondary/25 text-[10px] font-bold text-secondary">
-                <span className="material-symbols-outlined text-xs">wifi</span>
-                Network Connected
-              </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/25 text-[10px] font-bold text-purple-500">
-                <span className="material-symbols-outlined text-xs">lock</span>
-                Secure Transmission
-              </span>
-            </div>
-          )}
         </div>
-      </Card>
-
-      {/* Quick Emergency Helpline Contacts Bar */}
-      <div className="space-y-1.5 pt-1">
-        <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider px-1">
-          1-Tap Quick Dial Helplines
-        </p>
-        <div className="grid grid-cols-4 gap-1.5 text-center text-xs min-w-0">
-          <a
-            href="tel:112"
-            className="p-2.5 rounded-xl bg-error/10 hover:bg-error/20 border border-error/30 text-error font-extrabold flex flex-col items-center gap-0.5 transition-colors cursor-pointer min-h-[44px]"
-          >
-            <span className="material-symbols-outlined text-base">call</span>
-            <span>112</span>
-          </a>
-
-          <a
-            href="tel:108"
-            className="p-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high border border-outline-variant text-primary font-extrabold flex flex-col items-center gap-0.5 transition-colors cursor-pointer min-h-[44px]"
-          >
-            <span className="material-symbols-outlined text-base text-secondary">ambulance</span>
-            <span>108</span>
-          </a>
-
-          <a
-            href="tel:101"
-            className="p-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high border border-outline-variant text-primary font-extrabold flex flex-col items-center gap-0.5 transition-colors cursor-pointer min-h-[44px]"
-          >
-            <span className="material-symbols-outlined text-base text-secondary">fire_truck</span>
-            <span>101</span>
-          </a>
-
-          <a
-            href="tel:1070"
-            className="p-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high border border-outline-variant text-primary font-extrabold flex flex-col items-center gap-0.5 transition-colors cursor-pointer min-h-[44px]"
-          >
-            <span className="material-symbols-outlined text-base text-secondary">domain</span>
-            <span>1070</span>
-          </a>
-        </div>
-      </div>
+      )}
 
       {/* ================================================================ */}
       {/* CANCEL CONFIRMATION DIALOG (Modal) */}
@@ -392,19 +620,34 @@ export default function CitizenHomePage() {
               <div>
                 <h3 className="text-sm font-extrabold text-primary leading-tight">Cancel emergency request?</h3>
                 <p className="text-[11px] text-on-surface-variant mt-1.5 leading-relaxed">
-                  Are you sure you want to cancel this emergency request?
+                  {isFieldUnitDispatched
+                    ? 'Emergency response teams have been notified or dispatched.'
+                    : 'Are you sure you want to cancel this emergency request?'}
                 </p>
               </div>
             </div>
 
             {/* Information text */}
             <div className="text-[11px] text-on-surface-variant leading-relaxed space-y-2 pl-0.5">
-              <p>
-                If responders have not yet been dispatched, your request will be cancelled immediately.
-              </p>
-              <p>
-                If emergency teams are already responding, cancellation will no longer be available.
-              </p>
+              {isFieldUnitDispatched ? (
+                <>
+                  <p className="text-error font-medium">
+                    Confirming cancellation will stand down dispatched response units.
+                  </p>
+                  <p>
+                    Your alert will be marked cancelled in the system and you can submit a new report anytime.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    Your request will be cancelled immediately and removed from the active queue.
+                  </p>
+                  <p>
+                    You can submit a new emergency report at any time from the SOS tab.
+                  </p>
+                </>
+              )}
             </div>
 
             {/* Action Buttons */}
@@ -423,22 +666,26 @@ export default function CitizenHomePage() {
               {/* Cancel Request */}
               <button
                 type="button"
+                disabled={isCancelling}
                 onClick={() => handleCancelRequest()}
-                className="py-3 px-4 rounded-xl bg-surface-container hover:bg-error/10 border border-outline-variant/60 hover:border-error/30 text-on-surface-variant hover:text-error font-bold text-xs flex items-center justify-center gap-1.5 min-h-[48px] cursor-pointer transition-all active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-error/40"
+                className="py-3 px-4 rounded-xl bg-surface-container hover:bg-error/10 border border-outline-variant/60 hover:border-error/30 text-on-surface-variant hover:text-error font-bold text-xs flex items-center justify-center gap-1.5 min-h-[48px] cursor-pointer transition-all active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-error/40 disabled:opacity-50"
               >
-                <span className="material-symbols-outlined text-base">close</span>
-                <span>Cancel request</span>
+                <span className="material-symbols-outlined text-base">{isCancelling ? 'hourglass_empty' : 'close'}</span>
+                <span>{isCancelling ? 'Cancelling...' : 'Confirm & Cancel SOS'}</span>
               </button>
             </div>
           </Card>
         </div>
       )}
 
-      {/* Emergency Report Modal */}
-      <EmergencyReportModal
-        isOpen={showReportModal}
-        onClose={() => setShowReportModal(false)}
-        onSubmitted={handlePacketSubmitted}
+      {/* Citizen SOS Acknowledgement Modal */}
+      <EmergencyAcknowledgementModal
+        isOpen={showAcknowledgementModal}
+        onClose={() => {
+          setShowAcknowledgementModal(false);
+          setAcknowledgementData(null);
+        }}
+        data={acknowledgementData}
       />
     </div>
   );

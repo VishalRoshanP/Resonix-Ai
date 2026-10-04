@@ -2,7 +2,7 @@ import { cn } from '../../utils/helpers';
 
 export default function BrandHeader({
   title = 'RESONIX AI',
-  subtitle = 'Powered by Gemma 4',
+  subtitle = 'Emergency intelligence and response support',
   description,
   centered = false,
   className,

@@ -140,7 +140,7 @@ class WifiDirectService {
     if (caps.internetAvailable) {
       return {
         transport: TRANSPORT_TYPES.INTERNET_SERVER_DIRECT,
-        reason: 'Direct WAN internet connectivity detected. Lowest latency and direct Gemma 4 AI processing.',
+        reason: 'Direct WAN internet connectivity detected. Lowest latency and direct emergency AI processing.',
         bandwidthTier: 'HIGH',
       };
     }

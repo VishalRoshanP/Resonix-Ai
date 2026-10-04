@@ -44,7 +44,7 @@ export default function PermissionSetupPage() {
           </h1>
           <p className="text-sm font-semibold text-secondary flex items-center justify-center gap-1.5 mt-1">
             <span className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
-            Powered by Gemma 4
+            Emergency intelligence and response support
           </p>
           <p className="text-body-sm text-on-surface-variant mt-3 max-w-lg mx-auto">
             Configure system permissions to enable full offline intelligence, voice dispatching, and emergency mesh communication.

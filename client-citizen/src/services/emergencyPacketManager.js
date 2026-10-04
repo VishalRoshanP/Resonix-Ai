@@ -31,7 +31,7 @@ export function getDeviceIdentifier() {
  * Computes a lightweight SHA-256 HMAC integrity hash tag for packet payload verification
  */
 export function computePacketIntegrityHash(packetId, timestamp, userId, category) {
-  const seed = `${packetId}:${timestamp}:${userId}:${category}:resonix_gemma4_secure`;
+  const seed = `${packetId}:${timestamp}:${userId}:${category}:resonix_secure`;
   let hash = 0;
   for (let i = 0; i < seed.length; i++) {
     const char = seed.charCodeAt(i);
@@ -73,22 +73,115 @@ export function validateEmergencyPacket(packet) {
 }
 
 /**
+ * Builds the minimal Fast SOS Payload (~200 bytes) required for instant dispatch.
+ * Does NOT wait for voice, photo, language detection, geocoding, or heavy metadata.
+ */
+export function buildFastSosPayload({
+  category = 'GENERAL_EMERGENCY',
+  selectedCategory = null,
+  citizenSelectedCategory = null,
+  description = '',
+  transcript = '',
+  voiceTranscript = '',
+  originalTranscript = '',
+  nativeScriptTranscript = null,
+  speechRecognitionTranscript = '',
+  englishTranslation = null,
+  selectedVoiceLanguage = null,
+  selectedVoiceLanguageCode = null,
+  audio = null,
+  gps = null,
+  clientRequestId = null,
+  packetId = null,
+} = {}) {
+  const timestamp = new Date().toISOString();
+  const activeReqId = clientRequestId || packetId || `RESONIX-SOS-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+  const pId = packetId || activeReqId;
+
+  const lat = gps?.latitude != null ? parseFloat(gps.latitude) : null;
+  const lng = gps?.longitude != null ? parseFloat(gps.longitude) : null;
+  const hasGps = lat != null && lng != null && !isNaN(lat) && !isNaN(lng);
+  const accuracy = gps?.accuracy != null ? parseFloat(gps.accuracy) : (gps?.accuracyMeters != null ? parseFloat(gps.accuracyMeters) : null);
+  const sectorStr = hasGps ? `GPS: ${lat.toFixed(4)}, ${lng.toFixed(4)}` : 'Live Telemetry Sector';
+
+  const finalNative = nativeScriptTranscript || audio?.nativeScriptTranscript || null;
+  const finalTranscript = (finalNative || transcript || voiceTranscript || originalTranscript || audio?.transcript || audio?.originalTranscript || '').trim();
+  const selCat = (selectedCategory || citizenSelectedCategory || category || 'GENERAL_EMERGENCY').toUpperCase();
+
+  return {
+    packetId: pId,
+    clientRequestId: activeReqId,
+    timestamp,
+    latitude: hasGps ? lat : null,
+    longitude: hasGps ? lng : null,
+    coordinates: hasGps ? [lng, lat] : undefined,
+    gpsCoordinates: {
+      hasGps,
+      latitude: hasGps ? lat : null,
+      longitude: hasGps ? lng : null,
+      accuracyMeters: accuracy,
+      accuracy: accuracy,
+      sector: sectorStr,
+      status: hasGps ? 'GPS_AVAILABLE' : 'GPS_UNAVAILABLE',
+    },
+    location: {
+      lat: hasGps ? lat : null,
+      lng: hasGps ? lng : null,
+      latitude: hasGps ? lat : null,
+      longitude: hasGps ? lng : null,
+      accuracy: accuracy,
+      address: sectorStr,
+    },
+    sector: sectorStr,
+    emergencyCategory: selCat,
+    category: selCat,
+    selectedCategory: selCat,
+    citizenSelectedCategory: selCat,
+    description: description || finalTranscript || `${selCat} emergency SOS submitted by citizen.`,
+    transcript: finalTranscript,
+    voiceTranscript: finalTranscript,
+    originalTranscript: finalTranscript,
+    nativeScriptTranscript: finalNative,
+    speechRecognitionTranscript: speechRecognitionTranscript || audio?.speechRecognitionTranscript || (finalNative ? transcript || voiceTranscript : ''),
+    englishTranslation: englishTranslation || audio?.englishTranslation || null,
+    selectedVoiceLanguage: selectedVoiceLanguage || audio?.selectedVoiceLanguage || null,
+    selectedVoiceLanguageCode: selectedVoiceLanguageCode || audio?.selectedVoiceLanguageCode || null,
+    audioReference: {
+      hasAudio: Boolean(audio && (audio.hasAudio || audio.dataUrl || audio.audioBlob)),
+      audioId: audio?.audioId || null,
+      durationSeconds: audio?.durationSeconds || audio?.recordingTime || 0,
+      mimeType: audio?.mimeType || 'audio/webm',
+    },
+    audioData: audio?.dataUrl || null,
+  };
+}
+
+/**
  * Builds a structured Emergency Packet containing all required fields for offline storage.
  */
 export function buildEmergencyPacket({
   category = 'GENERAL_EMERGENCY',
+  selectedCategory = 'GENERAL_EMERGENCY',
+  citizenSelectedCategory = null,
   description = '',
   transcript = '',
+  speechRecognitionTranscript = '',
+  transcriptScript = 'Latin',
+  transcriptQuality = 'NATIVE',
+  transcriptStyle = 'ROMANIZED',
+  selectedVoiceLanguage = null,
+  selectedVoiceLanguageCode = null,
   language = 'en',
   audio = null,
   photo = null,
   gps = null,
   user = null,
   isOnline = false,
+  clientRequestId = null,
 } = {}) {
   const timestamp = new Date().toISOString();
-  const randomSuffix = Math.random().toString(36).substring(2, 6);
-  const packetId = `pkt_${Date.now()}_${randomSuffix}`;
+  const activeClientRequestId = clientRequestId || `RESONIX-SOS-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+  const packetId = activeClientRequestId;
   const userId = user?.id || `usr_guest_${Date.now()}`;
   const deviceId = getDeviceIdentifier();
 
@@ -112,24 +205,33 @@ export function buildEmergencyPacket({
   };
 
   // 3. GPS Coordinates & Location Metadata
+  const lat = gps?.latitude != null ? parseFloat(gps.latitude) : null;
+  const lng = gps?.longitude != null ? parseFloat(gps.longitude) : null;
+  const hasGps = lat != null && lng != null && !isNaN(lat) && !isNaN(lng);
+  const accuracy = gps?.accuracy != null ? parseFloat(gps.accuracy) : (gps?.accuracyMeters != null ? parseFloat(gps.accuracyMeters) : null);
+  const sectorStr = hasGps ? `GPS: ${lat.toFixed(4)}, ${lng.toFixed(4)}` : 'Live Telemetry Sector';
+
   const gpsCoordinates = {
-    hasGps: Boolean(gps && (gps.latitude || gps.hasLocation)),
-    latitude: gps?.latitude ? parseFloat(gps.latitude) : 12.9716,
-    longitude: gps?.longitude ? parseFloat(gps.longitude) : 77.5946,
-    accuracyMeters: gps?.accuracy ? parseFloat(gps.accuracy) : 5,
-    status: gps?.hasLocation ? 'GPS_AVAILABLE' : 'GPS_UNAVAILABLE',
+    hasGps,
+    latitude: hasGps ? lat : null,
+    longitude: hasGps ? lng : null,
+    accuracyMeters: accuracy,
+    accuracy: accuracy,
+    sector: sectorStr,
+    status: hasGps ? 'GPS_AVAILABLE' : 'GPS_UNAVAILABLE',
   };
 
   // 4. Incident Metadata
   const incidentMetadata = {
     category,
+    selectedCategory: selectedCategory || category,
+    citizenSelectedCategory: citizenSelectedCategory || category,
     priority: 'HIGH',
     urgencyTier: 'CRITICAL',
     offlineStatus: !isOnline,
     internetStatus: isOnline ? 'ONLINE' : 'OFFLINE_MESH',
     packetStatus: 'QUEUED_LOCAL',
-    gemmaMeta: {
-      primaryModel: 'google/gemma-4-e4b-it',
+    aiMeta: {
       queuedForInference: true,
       pipelineStage: 'REPORT_INGESTION',
     },
@@ -139,23 +241,46 @@ export function buildEmergencyPacket({
 
   return {
     packetId,
+    clientRequestId: activeClientRequestId,
     userId,
     deviceId,
     timestamp,
+    category,
+    selectedCategory: selectedCategory || category,
+    citizenSelectedCategory: citizenSelectedCategory || category,
     language,
     selectedLanguage: language,
+    selectedVoiceLanguage: selectedVoiceLanguage || audio?.selectedVoiceLanguage || null,
+    selectedVoiceLanguageCode: selectedVoiceLanguageCode || audio?.selectedVoiceLanguageCode || null,
     description: description.trim(),
     voiceTranscript,
-    originalVoiceTranscript: transcript || audio?.transcript || audio?.voiceTranscript || '',
-    detectedLanguage: audio?.detectedLanguage || audio?.gemmaAnalysis?.language || (language && language !== 'AUTO' ? language : null),
-    englishTranslation: audio?.englishTranslation || audio?.gemmaAnalysis?.englishText || voiceTranscript || '',
-    gemmaAnalysis: audio?.gemmaAnalysis || null,
-    incidentSummary: audio?.incidentSummary || audio?.gemmaAnalysis?.summary || '',
-    priority: audio?.priority || audio?.gemmaAnalysis?.priority || 'HIGH',
-    peopleAffected: audio?.peopleAffected || audio?.gemmaAnalysis?.peopleAffected || 0,
-    recommendedAction: audio?.recommendedAction || audio?.gemmaAnalysis?.recommendedAction || '',
+    speechRecognitionTranscript: speechRecognitionTranscript || transcript || audio?.speechRecognitionTranscript || audio?.originalTranscript || '',
+    transcriptScript: transcriptScript || audio?.transcriptScript || 'Latin',
+    transcriptQuality: transcriptQuality || audio?.transcriptQuality || 'NATIVE',
+    transcriptStyle: transcriptStyle || audio?.transcriptStyle || 'ROMANIZED',
+    originalVoiceTranscript: transcript || audio?.originalTranscript || audio?.transcript || audio?.voiceTranscript || '',
+    originalTranscript: transcript || audio?.originalTranscript || audio?.transcript || audio?.voiceTranscript || '',
+    detectedLanguage: audio?.detectedLanguage || audio?.language || (language && language !== 'AUTO' ? language : 'Language not detected'),
+    englishTranslation: audio?.englishTranslation || audio?.translatedTranscript || '',
+    translatedTranscript: audio?.translatedTranscript || audio?.englishTranslation || null,
+    incidentSummary: description.trim() || transcript || '',
+    priority: 'HIGH',
+    peopleAffected: audio?.peopleAffected || 0,
+    recommendedAction: 'Dispatch emergency response team',
     recordingDuration: audio?.durationSeconds || audio?.recordingTime || 0,
-    languageHint: audio?.languageHint || 'AUTO',
+    languageHint: selectedVoiceLanguageCode || audio?.languageHint || (language && language !== 'AUTO' ? language : 'AUTO'),
+    latitude: hasGps ? lat : null,
+    longitude: hasGps ? lng : null,
+    coordinates: hasGps ? [lng, lat] : undefined,
+    location: {
+      lat: hasGps ? lat : null,
+      lng: hasGps ? lng : null,
+      latitude: hasGps ? lat : null,
+      longitude: hasGps ? lng : null,
+      accuracy: accuracy,
+      address: sectorStr,
+    },
+    sector: sectorStr,
     audioReference,
     photoReference,
     gpsCoordinates,
@@ -167,7 +292,7 @@ export function buildEmergencyPacket({
   };
 }
 
-const ENCRYPTION_KEY = 'resonix_secure_packet_key_gemma4_2026';
+const ENCRYPTION_KEY = 'resonix_secure_packet_key_2026';
 
 /**
  * Encrypts packet payload using cipher envelope for secure local disk storage
@@ -250,12 +375,34 @@ export function savePacketToLocalQueue(packet) {
     // Phase 2 Step 1 Integration: Synchronize with Offline Communication Service
     if (offlineCommunicationService && typeof offlineCommunicationService.enqueueSOS === 'function') {
       offlineCommunicationService.enqueueSOS({
-        customMessageId: packet.packetId,
+        clientEventId: packet.clientRequestId || packet.packetId,
+        customMessageId: packet.clientRequestId || packet.packetId,
+        clientRequestId: packet.clientRequestId || packet.packetId,
+        packetId: packet.packetId,
         userId: packet.userId || 'usr_guest',
-        latitude: packet.gpsCoordinates?.latitude,
-        longitude: packet.gpsCoordinates?.longitude,
+        location: packet.location || {
+          latitude: packet.gpsCoordinates?.latitude ?? packet.latitude,
+          longitude: packet.gpsCoordinates?.longitude ?? packet.longitude,
+          accuracy: packet.gpsCoordinates?.accuracyMeters ?? packet.gpsCoordinates?.accuracy,
+          address: packet.sector || packet.location?.address || 'GPS Location',
+        },
+        latitude: packet.gpsCoordinates?.latitude ?? packet.latitude,
+        longitude: packet.gpsCoordinates?.longitude ?? packet.longitude,
+        category: packet.category || packet.emergencyCategory || 'GENERAL',
+        type: packet.category || packet.emergencyCategory || 'GENERAL',
+        priority: packet.priority || 'HIGH',
+        citizenMessage: packet.description || packet.citizenMessage || packet.emergencyText || packet.notes || '',
         emergencyText: packet.description || packet.notes || '',
+        description: packet.description || packet.notes || '',
         voiceTranscript: packet.voiceTranscript || packet.audioReference?.transcript || '',
+        originalVoiceTranscript: packet.originalVoiceTranscript || packet.voiceTranscript || '',
+        media: packet.media || (packet.photoReference ? [{ type: 'image', ...packet.photoReference }] : []),
+        photoReference: packet.photoReference || null,
+        audioReference: packet.audioReference || null,
+        detectedLanguage: packet.detectedLanguage || packet.selectedLanguage || 'en',
+        englishTranslation: packet.englishTranslation || packet.voiceTranscript || '',
+        selectedLanguage: packet.selectedLanguage || packet.language || 'en',
+        syncStatus: 'QUEUED',
       });
     }
   } catch (err) {
@@ -467,6 +614,9 @@ export async function autoSyncPendingPackets(apiSendFn = null) {
       if (isConfirmed) {
         packet.packetStatus = 'DELIVERED';
         removeLocalPacket(packet.packetId);
+        if (offlineCommunicationService && typeof offlineCommunicationService.removeMessage === 'function') {
+          offlineCommunicationService.removeMessage(packet.packetId);
+        }
         logSyncAttempt({ packetId: packet.packetId, status: 'CONFIRMED', attempt: (packet.retryCount || 0) + 1 });
         syncedCount++;
         console.log(`[EmergencyPacketManager] ✅ Backend confirmed packet ${packet.packetId}. Removed from offline queue.`);
@@ -503,31 +653,49 @@ export async function autoSyncPendingPackets(apiSendFn = null) {
  * Transmits packet to Express backend endpoint over HTTP POST.
  * Falls back to Google Nearby Connections & local SQLite queue ONLY when offline or network fails.
  */
-export async function transmitPacketToBackend(packet, apiSendFn) {
+export async function transmitPacketToBackend(packet, apiSendFn, options = {}) {
   if (!packet) return null;
 
   const targetUrl = resolveApiUrl('/api/v1/emergency/create');
+  const timeoutMs = options.timeout || 4000;
+
+  // Phase 3: Audit SOS Payload Size in development
+  try {
+    const payloadStr = JSON.stringify(packet);
+    const charLen = payloadStr.length;
+    let byteSize = charLen;
+    if (typeof Blob !== 'undefined') {
+      byteSize = new Blob([payloadStr]).size;
+    }
+    console.log(`[SOS Payload Size] JSON length: ${charLen} chars | Byte size: ${byteSize} bytes`);
+  } catch (_) {}
 
   console.log('[SOS] Button Pressed');
+  console.log(`[SOS_POST_START] timestamp=${new Date().toISOString()} packetId=${packet.packetId}`);
   console.log('[SOS] Sending POST /api/v1/emergency/create');
 
   // 1. Try Online HTTP POST Request FIRST
   try {
     let result;
     if (apiSendFn) {
-      result = await apiSendFn(packet);
+      result = await apiSendFn(packet, { timeout: timeoutMs });
     } else {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       const res = await fetch(targetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(packet),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       if (!res.ok) {
         throw new Error(`HTTP Error ${res.status}: ${res.statusText}`);
       }
       result = await res.json();
     }
 
+    console.log(`[SOS_POST_RESPONSE] timestamp=${new Date().toISOString()} packetId=${packet.packetId} status=success`);
     console.log('[SOS] Internet Available = true');
     console.log('[SOS] Using Online API');
     console.log('[SOS] API Success');
@@ -538,6 +706,9 @@ export async function transmitPacketToBackend(packet, apiSendFn) {
     console.log('==================================================');
 
     removeLocalPacket(packet.packetId);
+    if (offlineCommunicationService && typeof offlineCommunicationService.removeMessage === 'function') {
+      offlineCommunicationService.removeMessage(packet.packetId);
+    }
     return result;
   } catch (err) {
     // 2. Online HTTP POST Failed -> Fallback to Simple Bluetooth P2P Relay & Offline SQLite Queue

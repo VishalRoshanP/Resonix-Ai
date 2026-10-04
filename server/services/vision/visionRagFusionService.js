@@ -48,7 +48,7 @@ class VisionRagFusionService {
    */
   recommendResources(visionRecord = {}, context = {}) {
     const photoId = visionRecord.photoId || `photo_${Date.now()}`;
-    const disasterType = (visionRecord.disaster_type || visionRecord.visibleDisaster || 'FLOOD').toUpperCase();
+    const disasterType = (visionRecord.disaster_type || visionRecord.visibleDisaster || visionRecord.category || 'GENERAL').toUpperCase();
     const severityTier = (visionRecord.severity_level || visionRecord.infrastructureDamage || 'HIGH').toUpperCase();
     const rawScene = visionRecord.overall_scene_description || '';
     const citizenText = context.citizenNotes || context.description || 'Emergency incident reported';

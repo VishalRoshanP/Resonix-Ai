@@ -49,7 +49,7 @@ class DisasterHazardAnalysisService {
    */
   analyzeHazards(visionRecord = {}, context = {}) {
     const photoId = visionRecord.photoId || `photo_${Date.now()}`;
-    const disasterType = (visionRecord.disaster_type || visionRecord.visibleDisaster || 'FLOOD').toUpperCase();
+    const disasterType = (visionRecord.disaster_type || visionRecord.visibleDisaster || visionRecord.category || 'GENERAL').toUpperCase();
     const severity = (visionRecord.severity_level || visionRecord.infrastructureDamage || 'HIGH').toUpperCase();
     const rawText = (visionRecord.overall_scene_description || '').toLowerCase();
 

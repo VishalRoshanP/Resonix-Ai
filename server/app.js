@@ -7,7 +7,8 @@ const cookieParser = require('cookie-parser');
 const securityMiddleware = require('./middlewares/securityMiddleware');
 const corsMiddleware = require('./middlewares/corsMiddleware');
 const requestLogger = require('./middlewares/loggerMiddleware');
-const apiLimiter = require('./middlewares/rateLimitMiddleware');
+const { generalLimiter, healthLimiter } = require('./middlewares/rateLimitMiddleware');
+const rateLimitConfig = require('./config/rateLimit');
 const sanitizationMiddleware = require('./middlewares/sanitizationMiddleware');
 const responseMiddleware = require('./middlewares/responseMiddleware');
 const notFoundHandler = require('./middlewares/notFoundMiddleware');
@@ -17,6 +18,9 @@ const errorHandler = require('./middlewares/errorMiddleware');
 const apiRouter = require('./routes/apiRouter');
 
 const app = express();
+
+// Trust first proxy for Render / reverse-proxy client IP resolution
+app.set('trust proxy', rateLimitConfig.trustProxy);
 
 // Disable HTTP ETags to ensure dynamic APIs always return HTTP 200 OK
 app.set('etag', false);
@@ -31,7 +35,7 @@ app.use(corsMiddleware);
 app.use(requestLogger);
 
 // 4. Rate Limiting for API Protection
-app.use('/api', apiLimiter);
+app.use('/api', generalLimiter);
 
 // 5. Body Parsers & Request Payload Limits
 app.use(express.json({ limit: '10mb' }));
@@ -51,6 +55,8 @@ app.use(compression());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // 10. API Routes
+const healthController = require('./controllers/healthController');
+app.get('/health', healthLimiter, healthController.getHealth);
 app.use('/api/v1', apiRouter);
 app.use('/api', apiRouter); // Alias for convenience
 

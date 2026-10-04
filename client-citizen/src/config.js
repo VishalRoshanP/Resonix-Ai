@@ -11,11 +11,11 @@ export const config = {
     voiceFirstSOS: true,
     offlineRelayMesh: true,
     predictiveAi: true,
-    mockFallback: env.isMockEnabled,
+    mockFallback: false,
   },
   geoDefaults: {
-    lat: 12.9716,
-    lng: 77.5946,
-    city: 'Bengaluru Command Hub',
+    lat: null,
+    lng: null,
+    city: 'Location Pending Acquisition',
   },
 };

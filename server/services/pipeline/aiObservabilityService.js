@@ -6,8 +6,8 @@
  *   1. Processing start timestamp (ISO)
  *   2. Processing finish timestamp (ISO)
  *   3. Processing duration (ms)
- *   4. Prompt version (e.g. 'v4.2.0-RESONIX-GEMMA4')
- *   5. Model used (e.g. 'google/gemma-4-e4b-it')
+ *   4. Prompt version (e.g. 'v4.2.0-RESONIX-AI')
+ *   5. Model used (e.g. 'resonix-disaster-intelligence')
  *   6. Token usage (promptTokens, completionTokens, totalTokens)
  *   7. Success flag (true / false)
  *   8. Failure reason (null or error message)
@@ -20,8 +20,8 @@ const logger = require('../../utils/logger');
 class AiObservabilityService {
   constructor() {
     this.auditLogs = [];
-    this.promptVersion = 'v4.2.0-RESONIX-GEMMA4';
-    this.defaultModel = 'google/gemma-4-e4b-it';
+    this.promptVersion = 'v4.2.0-RESONIX-AI';
+    this.defaultModel = 'resonix-disaster-intelligence';
   }
 
   /**

@@ -16,20 +16,6 @@ export const authService = {
       }
       return res;
     } catch (error) {
-      if (isNetworkError(error)) {
-        console.warn('[RESONIX Auth] Backend server unreachable. Initializing local offline session.');
-        const mockUser = {
-          id: 'cit_offline',
-          name: credentials?.email ? credentials.email.split('@')[0] : 'Alex Johnson',
-          email: credentials?.email || 'citizen@resonix.gov',
-          role: 'citizen',
-          isGuest: false,
-          isOffline: true,
-        };
-        tokenManager.setToken('mock_citizen_jwt_token_2026');
-        tokenManager.setUser(mockUser);
-        return { status: 'success', data: { user: mockUser, token: 'mock_citizen_jwt_token_2026' } };
-      }
       throw error;
     }
   },
@@ -56,20 +42,6 @@ export const authService = {
       }
       return res;
     } catch (error) {
-      if (isNetworkError(error)) {
-        console.warn('[RESONIX Auth] Backend server unreachable. Initializing local offline session.');
-        const mockUser = {
-          id: 'cit_' + Date.now(),
-          name: payload.name || 'New Citizen User',
-          email: payload.email || 'newcitizen@resonix.gov',
-          role: 'citizen',
-          isGuest: false,
-          isOffline: true,
-        };
-        tokenManager.setToken('mock_citizen_jwt_token_2026');
-        tokenManager.setUser(mockUser);
-        return { status: 'success', data: { user: mockUser, token: 'mock_citizen_jwt_token_2026' } };
-      }
       throw error;
     }
   },
@@ -103,7 +75,7 @@ export const authService = {
 
   updateProfile: async (userId, profileData) => {
     try {
-      if (userId && !userId.startsWith('cit_offline') && !userId.startsWith('usr_mock')) {
+      if (userId && !userId.startsWith('cit_offline')) {
         const res = await userApi.updateUser(userId, {
           name: profileData.fullName || profileData.name,
           phone: profileData.phone,
@@ -132,8 +104,8 @@ export const authService = {
     const currentUser = tokenManager.getUser() || {};
     const updatedUser = {
       ...currentUser,
-      name: profileData.fullName || profileData.name || currentUser.name || 'Citizen User',
-      email: profileData.email || currentUser.email || 'citizen@resonix.gov',
+      name: profileData.fullName || profileData.name || currentUser.name || '',
+      email: profileData.email || currentUser.email || '',
       phone: profileData.phone || currentUser.phone || '',
       language: profileData.preferredLanguage || currentUser.language || 'English',
       address: profileData.address !== undefined ? profileData.address : currentUser.address,

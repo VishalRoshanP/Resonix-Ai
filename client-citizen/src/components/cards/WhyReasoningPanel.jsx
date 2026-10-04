@@ -2,7 +2,7 @@ import Card from '../ui/Card';
 import StatusChip from '../ui/StatusChip';
 
 export default function WhyReasoningPanel({
-  title = 'Why Gemma 4 Recommended This Action',
+  title = 'Emergency Decision Rationale',
   confidence = null,
   primaryReason = 'Multi-sensor telemetry indicates emergency situation in Sector 4.',
   dataSources = [
@@ -23,7 +23,7 @@ export default function WhyReasoningPanel({
           </span>
           <div>
             <h3 className="text-body-lg font-bold text-primary">{title}</h3>
-            <p className="text-xs text-on-surface-variant">Gemma 4 Local Reasoning Rationale</p>
+            <p className="text-xs text-on-surface-variant">Automated Decision Rationale</p>
           </div>
         </div>
         <StatusChip label={confidence ? `Confidence: ${confidence}` : 'Confidence: Not Available'} variant="active" dot />

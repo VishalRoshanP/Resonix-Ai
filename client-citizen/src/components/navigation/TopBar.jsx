@@ -88,7 +88,7 @@ export default function TopBar({ onToggleMobileSidebar }) {
             {/* Desktop Powered Subtitle */}
             <span className="hidden md:flex text-xs font-semibold text-secondary items-center gap-1.5 mt-0.5">
               <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
-              Powered by Gemma 4
+              Disaster Intelligence Core
             </span>
           </div>
         </div>

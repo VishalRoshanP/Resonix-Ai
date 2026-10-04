@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { resolveApiUrl } from '../utils/env';
 
 export const LOCATION_STATUS = {
@@ -22,13 +22,28 @@ export function useLocationDetector() {
   });
   const [errorMessage, setErrorMessage] = useState(null);
 
+  const isDetectingRef = useRef(false);
+  const locationDataRef = useRef(locationData);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    locationDataRef.current = locationData;
+  }, [locationData]);
+
   const detectLocation = useCallback(async () => {
-    setStatus(LOCATION_STATUS.DETECTING);
-    setErrorMessage(null);
+    if (isDetectingRef.current) return locationDataRef.current;
+    isDetectingRef.current = true;
+    if (isMountedRef.current) {
+      setStatus(LOCATION_STATUS.DETECTING);
+      setErrorMessage(null);
+    }
 
     if (!navigator.geolocation) {
-      setStatus(LOCATION_STATUS.UNAVAILABLE);
-      setErrorMessage('Location unavailable. Your SOS can still be sent.');
+      isDetectingRef.current = false;
+      if (isMountedRef.current) {
+        setStatus(LOCATION_STATUS.UNAVAILABLE);
+        setErrorMessage('Location unavailable. Your SOS can still be sent.');
+      }
       return null;
     }
 
@@ -41,6 +56,7 @@ export function useLocationDetector() {
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          isDetectingRef.current = false;
           const data = {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
@@ -51,9 +67,12 @@ export function useLocationDetector() {
             timestamp: position.timestamp || Date.now(),
           };
 
-          setLocationData(data);
-          setStatus(LOCATION_STATUS.SUCCESS);
-          setErrorMessage(null);
+          locationDataRef.current = data;
+          if (isMountedRef.current) {
+            setLocationData(data);
+            setStatus(LOCATION_STATUS.SUCCESS);
+            setErrorMessage(null);
+          }
 
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -62,9 +81,12 @@ export function useLocationDetector() {
           resolve(data);
         },
         (error) => {
-          setStatus(LOCATION_STATUS.UNAVAILABLE);
-          const fallbackMsg = 'Location unavailable. Your SOS can still be sent.';
-          setErrorMessage(fallbackMsg);
+          isDetectingRef.current = false;
+          if (isMountedRef.current) {
+            setStatus(LOCATION_STATUS.UNAVAILABLE);
+            const fallbackMsg = 'Location unavailable. Your SOS can still be sent.';
+            setErrorMessage(fallbackMsg);
+          }
           resolve(null);
         },
         options
@@ -74,7 +96,7 @@ export function useLocationDetector() {
 
   // Send GPS payload to backend report API
   const sendLocationToBackend = useCallback(async (locationPayload) => {
-    const dataToSend = locationPayload || locationData;
+    const dataToSend = locationPayload || locationDataRef.current || locationData;
     if (!dataToSend) return null;
 
     try {
@@ -98,7 +120,11 @@ export function useLocationDetector() {
 
   // Attempt automatic detection on initial component mount
   useEffect(() => {
+    isMountedRef.current = true;
     detectLocation();
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [detectLocation]);
 
   return {

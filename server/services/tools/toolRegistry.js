@@ -319,10 +319,21 @@ class ToolRegistry {
           severity: { type: 'string', description: 'Severity tier (CRITICAL, HIGH, MEDIUM, LOW)' },
           sector: { type: 'string', description: 'Location sector' },
           description: { type: 'string', description: 'Detailed incident report description' },
+          clientRequestId: { type: 'string', description: 'Idempotency key to prevent duplicate incident creation' },
         },
         required: ['title', 'description', 'sector'],
       },
       handler: async (params) => {
+        // Auto-generate idempotency key if AI doesn't provide one
+        if (!params.clientRequestId) {
+          const seed = `ai_tool_${params.title || ''}_${params.description || ''}_${params.sector || ''}`;
+          let hash = 0;
+          for (let i = 0; i < seed.length; i++) {
+            hash = (hash << 5) - hash + seed.charCodeAt(i);
+            hash |= 0;
+          }
+          params.clientRequestId = `AI-TOOL-${Math.abs(hash).toString(16).toUpperCase()}`;
+        }
         const created = await incidentService.createIncident(params);
         return {
           status: 'INCIDENT_CREATED',

@@ -1,24 +1,36 @@
 /**
- * Incident Extraction Prompt Architecture Module for Gemma 4 E4B
+ * Incident Extraction Prompt Architecture Module for RESONIX AI
  * Prepares system instructions and schema definitions for extracting structured emergency incidents.
  */
 
-const VERSION = '1.0.0';
+const VERSION = '2.0.0';
 
-const SYSTEM_PROMPT = `You are Gemma 4 E4B, the primary disaster intelligence model for RESONIX AI.
-Your task is to extract structured emergency incident details from raw multi-source input payloads.`;
+const SYSTEM_PROMPT = `You are the emergency incident extraction engine for RESONIX AI — India's National Disaster Response Coordination System.
+
+TASK: Extract structured emergency incident details from the raw multi-source input payload provided.
+
+GROUNDING RULES (MANDATORY):
+1. Extract ONLY information that is explicitly present in the input data.
+2. If a field value is not available in the input, return null or empty — NEVER fabricate details.
+3. For location: Use coordinates/address from the input. If not provided, set to null.
+4. For affectedPeopleCount: Use ONLY if a count is stated or clearly implied. Use null if unknown.
+5. hazardsIdentified: List ONLY hazards described in the input. Empty array if none mentioned.
+6. urgencyScore: Float 0.0-1.0 based on described severity. Use null if insufficient information to assess.
+
+CRITICAL OUTPUT RULE: Return ONLY valid JSON matching the schema below. No markdown, no explanation, no preamble.`;
 
 const SCHEMA_DESCRIPTION = `{
-  "title": "Short descriptive title of the incident",
-  "category": "FIRE | FLOOD | EARTHQUAKE | MEDICAL | HAZMAT | BUILDING_COLLAPSE | OTHER",
+  "title": "Short descriptive title of the incident based on input data",
+  "category": "FLOOD | FIRE | EARTHQUAKE | BUILDING_COLLAPSE | MEDICAL | STORM | CYCLONE | LANDSLIDE | ROAD_ACCIDENT | OTHER",
   "severity": "CRITICAL | HIGH | MEDIUM | LOW",
   "location": {
-    "name": "Location description",
-    "coordinates": { "lat": 0, "lng": 0 }
+    "name": "Location description from input or null",
+    "coordinates": { "lat": null, "lng": null }
   },
-  "affectedPeopleCount": 0,
+  "affectedPeopleCount": null,
   "hazardsIdentified": [],
-  "urgencyScore": 0.0
+  "urgencyScore": null,
+  "reasoning": "Brief explanation of what input evidence was used for extraction"
 }`;
 
 /**

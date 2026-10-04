@@ -48,10 +48,10 @@ class VisionJsonValidationService {
 
     // 1. Determine disaster_type
     const rawType = String(
-      rawAnalysis.disaster_type || rawAnalysis.disasterType || rawAnalysis.visibleDisaster || rawAnalysis.category || 'FLOOD'
+      rawAnalysis.disaster_type || rawAnalysis.disasterType || rawAnalysis.visibleDisaster || rawAnalysis.category || 'GENERAL'
     ).toUpperCase().replace(/\s+/g, '_');
 
-    let disaster_type = 'FLOOD';
+    let disaster_type = 'GENERAL';
     if (this.supportedDisasters.includes(rawType)) {
       disaster_type = rawType;
     } else if (rawType.includes('BUILDING') || rawType.includes('COLLAPSE') || rawType.includes('STRUCTURAL')) {

@@ -33,6 +33,11 @@ const CATEGORY_DIRECTORY_MAP = {
   STORM: 'storm',
   MEDICAL: 'medical',
   BUILDING_COLLAPSE: 'building_collapse',
+  LANDSLIDE: 'landslide',
+  ROAD_ACCIDENT: 'accident',
+  ACCIDENT: 'accident',
+  CYCLONE: 'storm',
+  EARTHQUAKE: 'seismic',
   GENERAL: 'general',
 };
 

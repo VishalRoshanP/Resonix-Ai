@@ -8,14 +8,14 @@ export const PERMISSION_CONFIGS = [
     id: 'microphone',
     title: 'Microphone Access',
     icon: 'mic',
-    requiredReason: 'Enables hands-free voice command relay, audio emergency broadcasts, and Gemma 4 voice AI transcription.',
+    requiredReason: 'Enables hands-free voice command relay, audio emergency broadcasts, and voice emergency transcription.',
     limitationIfDenied: 'Voice emergency commands unavailable. Manual text reporting will be used.',
   },
   {
     id: 'camera',
     title: 'Camera Access',
     icon: 'photo_camera',
-    requiredReason: 'Enables disaster site damage capture, aerial hazard inspection, and Gemma 4 visual AI analysis.',
+    requiredReason: 'Enables disaster site damage capture, aerial hazard inspection, and visual hazard analysis.',
     limitationIfDenied: 'Photo upload disabled. Text and voice reports remain fully functional.',
   },
   {
@@ -199,10 +199,26 @@ export function PermissionProvider({ children }) {
     await requestNearbyDevices();
   }, [requestMicrophone, requestCamera, requestLocation, requestNotifications, requestNearbyDevices]);
 
-  // Mark setup completed
+  // Mark setup completed & initialize offline emergency services readiness
   const completePermissionSetup = useCallback(() => {
     localStorage.setItem(SETUP_COMPLETED_KEY, 'true');
     setHasCompletedPermissionsSetup(true);
+
+    try {
+      // 1. Initialize offline communication queue & device ID
+      const { offlineCommunicationService } = require('../services/offlineCommunicationService');
+      offlineCommunicationService.getDeviceId();
+
+      // 2. Initialize Bluetooth & Nearby Relay Services Readiness
+      const { meshRelayService } = require('../services/meshRelayService');
+      if (meshRelayService && typeof meshRelayService.initializeMesh === 'function') {
+        meshRelayService.initializeMesh();
+      }
+
+      console.log('[PermissionContext] 🚀 Offline Emergency Preparation Complete: Nearby Connections, Bluetooth Services, Offline Queue, and Relay Engine Ready.');
+    } catch (err) {
+      console.warn('[PermissionContext] Offline preparation initialization note:', err.message);
+    }
   }, []);
 
   return (

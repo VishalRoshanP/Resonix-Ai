@@ -35,7 +35,7 @@ export default function LanguageSelectionPage() {
           </h1>
           <p className="text-sm font-semibold text-secondary flex items-center justify-center gap-1.5 mt-1">
             <span className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
-            Powered by Gemma 4
+            Emergency intelligence and response support
           </p>
           <p className="text-body-sm text-on-surface-variant mt-3 max-w-md mx-auto">
             Select your preferred operational language for emergency dispatches, voice synthesis, and real-time intelligence.

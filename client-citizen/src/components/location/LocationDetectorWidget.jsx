@@ -21,14 +21,14 @@ export default function LocationDetectorWidget({ compact = false }) {
         )}
 
         {hasLocation && locationData && (
-          <span className="flex items-center gap-1 text-emerald-800 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30" title={`Accuracy: ±${locationData.accuracy}m`}>
+          <span className="flex items-center gap-1 text-emerald-800 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30" title={`Accuracy: ±${locationData.accuracy}m`}>
             <span className="material-symbols-outlined text-xs">location_on</span>
             GPS (±{locationData.accuracy}m)
           </span>
         )}
 
         {isUnavailable && (
-          <span className="flex items-center gap-1 text-amber-800 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30" title="Location unavailable. Your SOS can still be sent.">
+          <span className="flex items-center gap-1 text-amber-800 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30" title="Location unavailable. Your SOS can still be sent.">
             <span className="material-symbols-outlined text-xs">location_off</span>
             No GPS
           </span>
@@ -38,68 +38,64 @@ export default function LocationDetectorWidget({ compact = false }) {
   }
 
   return (
-    <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4 sm:p-5 text-left space-y-3 shadow-sm animate-fade-in overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="material-symbols-outlined text-secondary text-xl shrink-0">
-            my_location
+    <div className="bg-surface-container border border-outline-variant/60 rounded-xl p-3 sm:p-3.5 text-left shadow-xs transition-all animate-fade-in">
+      <div className="flex items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <span className={`material-symbols-outlined text-xl shrink-0 ${
+            isDetecting
+              ? 'text-secondary animate-spin'
+              : hasLocation && locationData
+              ? 'text-emerald-600 dark:text-emerald-400 animate-gps-check'
+              : 'text-amber-600 dark:text-amber-400'
+          }`}>
+            {isDetecting ? 'sync' : hasLocation && locationData ? 'check_circle' : 'location_off'}
           </span>
-          <span className="font-bold text-primary text-sm">Automatic GPS</span>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`font-bold text-xs leading-tight ${
+                hasLocation && locationData
+                  ? 'text-emerald-800 dark:text-emerald-300'
+                  : isDetecting
+                  ? 'text-secondary'
+                  : 'text-amber-800 dark:text-amber-300'
+              }`}>
+                {isDetecting
+                  ? 'Acquiring GPS coordinates...'
+                  : hasLocation && locationData
+                  ? '✓ Location Ready'
+                  : 'Location unavailable'}
+              </span>
+              {hasLocation && locationData && !isDetecting && (
+                <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 shrink-0">
+                  ±{locationData.accuracy}m
+                </span>
+              )}
+            </div>
+
+            <p className="text-[11px] text-on-surface-variant font-mono truncate mt-0.5">
+              {isDetecting
+                ? 'Contacting emergency satellites...'
+                : hasLocation && locationData
+                ? `${locationData.latitude.toFixed(4)}°, ${locationData.longitude.toFixed(4)}° • Accuracy ±${locationData.accuracy}m`
+                : 'Emergency SOS will send last known coordinates.'}
+            </p>
+          </div>
         </div>
 
         <button
           type="button"
           onClick={detectLocation}
           disabled={isDetecting}
-          className="text-xs font-semibold text-secondary hover:text-primary transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50 shrink-0 min-h-[32px]"
+          className="p-2 text-on-surface-variant hover:text-primary hover:bg-surface-container-high rounded-lg transition-colors flex items-center justify-center shrink-0 cursor-pointer disabled:opacity-50 min-h-[36px] min-w-[36px]"
+          title="Refresh GPS Location"
+          aria-label="Refresh GPS Location"
         >
-          <span className={`material-symbols-outlined text-sm ${isDetecting ? 'animate-spin' : ''}`}>
+          <span className={`material-symbols-outlined text-base ${isDetecting ? 'animate-spin text-secondary' : ''}`}>
             refresh
           </span>
-          {isDetecting ? 'Detecting...' : 'Refresh'}
         </button>
       </div>
-
-      {/* State 1: Detecting */}
-      {isDetecting && (
-        <div className="p-3 bg-surface-container/40 border border-outline-variant/60 rounded-xl flex items-center gap-3 text-xs text-on-surface-variant font-semibold min-w-0">
-          <span className="material-symbols-outlined text-lg animate-spin shrink-0">sync</span>
-          <span className="break-words">Acquiring high-accuracy GPS coordinates...</span>
-        </div>
-      )}
-
-      {/* State 2: GPS Success */}
-      {hasLocation && locationData && !isDetecting && (
-        <div className="p-3 bg-emerald-50 border border-emerald-300/40 rounded-xl space-y-1.5 min-w-0">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="font-mono font-bold text-emerald-800 flex items-center gap-1 min-w-0">
-              <span className="material-symbols-outlined text-sm shrink-0">check_circle</span>
-              <span className="truncate">{locationData.latitude.toFixed(5)}°, {locationData.longitude.toFixed(5)}°</span>
-            </span>
-            <span className="px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-emerald-500/15 text-emerald-800 border border-emerald-400/30 whitespace-nowrap shrink-0">
-              ±{locationData.accuracy}m
-            </span>
-          </div>
-          <p className="text-[10px] text-on-surface-variant font-medium">
-            Coordinates attached automatically for rescue dispatch.
-          </p>
-        </div>
-      )}
-
-      {/* State 3: GPS Unavailable / Failed */}
-      {isUnavailable && !isDetecting && (
-        <div className="p-3.5 bg-amber-50 border border-amber-300/50 rounded-xl text-xs space-y-2 min-w-0">
-          <div className="flex items-start gap-2.5 font-semibold text-amber-900">
-            <span className="material-symbols-outlined text-lg shrink-0 mt-0.5">location_off</span>
-            <div className="min-w-0">
-              <p className="font-bold text-amber-900">Location unavailable. Your SOS can still be sent.</p>
-              <p className="text-[10px] text-on-surface-variant font-medium mt-1">
-                Emergency reporting is non-blocking. Manual sector pins will be used if needed.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

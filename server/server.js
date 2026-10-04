@@ -1,88 +1,91 @@
-const dns = require('dns');
-try {
-  dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
-} catch (e) {}
+/**
+ * RESONIX AI — Main Express & Socket.IO HTTP Server Entry Point
+ * 
+ * Responsibilities:
+ * - Loads environment variables from .env
+ * - Connects to MongoDB Atlas database
+ * - Attaches Socket.IO real-time synchronization engine
+ * - Starts Express HTTP Server on configured PORT (default: 5000)
+ * Updated: 2026-08-26 21:58
+ */
 
-const dotenv = require('dotenv');
 const path = require('path');
-const fs = require('fs');
+const http = require('http');
 
-// Load environment variables from .env file
-dotenv.config({ path: path.join(__dirname, '.env') });
+// Load environment variables from server/.env
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-const app = require('./app');
+const mongoose = require('mongoose');
 const connectDB = require('./config/db');
-const logger = require('./utils/logger');
+const app = require('./app');
 const socketService = require('./services/socketService');
-
-// Ensure required runtime directories exist
-const uploadDir = path.join(__dirname, 'uploads');
-const logDir = path.join(__dirname, 'logs');
-
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+const weatherIngestionWorker = require('./services/weather/weatherIngestionWorker');
+const logger = require('./utils/logger');
 
 const PORT = process.env.PORT || 5000;
+const HOST = process.env.HOST || '0.0.0.0';
 
-// Connect to MongoDB Atlas and start server
-connectDB()
-  .then(() => {
-    const server = app.listen(PORT, () => {
-      // Attach Socket.IO Real-Time Engine
-      socketService.init(server);
+// 1. Create HTTP Server using Express app
+const server = http.createServer(app);
 
-      const ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-      const ollamaModel = process.env.OLLAMA_MODEL || 'gemma4:e4b';
-      console.log(`
-======================================================
-  🚀 RESONIX AI Backend Server Running
-  📡 Environment : ${process.env.NODE_ENV || 'development'}
-  🔗 URL         : http://localhost:${PORT}
-  ⚡ Real-Time   : Socket.IO Engine Active
-  🤖 AI Engine   : Powered by Local Gemma 4 (Ollama)
-  📍 Provider    : Local Ollama (${ollamaUrl})
-  🧠 Model       : ${ollamaModel}
-======================================================
-      `);
+// 2. Initialize Socket.IO Real-Time Synchronization Engine
+socketService.init(server);
+
+// 3. Connect to MongoDB Atlas Database
+async function startServer() {
+  try {
+    if (process.env.MONGODB_URI) {
+      await connectDB();
+      logger.info('[Server] ✅ MongoDB Atlas connected successfully.');
+    } else {
+      logger.warn('[Server] ⚠️ MONGODB_URI missing from environment. Operating in memory-mode.');
+    }
+
+    server.listen(PORT, HOST, () => {
+      console.log('==================================================');
+      console.log(`🚀 RESONIX AI Backend Server Running on ${HOST}:${PORT}`);
+      console.log(`• Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`• Health Check: http://${HOST}:${PORT}/health`);
+      console.log(`• Socket.IO:    http://${HOST}:${PORT}`);
+      console.log('==================================================');
     });
 
-    // Handle Unhandled Promise Rejections
-    process.on('unhandledRejection', (err) => {
-      logger.error(`[Unhandled Rejection] ${err.name} - ${err.message}`);
-      console.error('Unhandled Rejection! Shutting down server gracefully...', err);
-      server.close(() => {
-        process.exit(1);
-      });
-    });
-
-    // Handle Uncaught Exceptions
-    process.on('uncaughtException', (err) => {
-      logger.error(`[Uncaught Exception] ${err.name} - ${err.message}`);
-      console.error('Uncaught Exception! Shutting down server immediately...', err);
-      process.exit(1);
-    });
-
-    // Handle SIGTERM signal
-    process.on('SIGTERM', () => {
-      console.log('👋 SIGTERM received. Shutting down server gracefully...');
-      server.close(() => {
-        console.log('💥 Process terminated!');
-      });
-    });
-  })
-  .catch((err) => {
-    console.error(`
-======================================================
-  ❌ MONGODB CONNECTION FAILED — SERVER NOT STARTED
-======================================================
-  Error Message : ${err.message}
-
-  🔍 Debugging Checklist:
-  1. Network Access (IP Whitelist): Check if your current IP is allowed in MongoDB Atlas (Network Access -> Add IP Address / Allow 0.0.0.0/0).
-  2. Database Credentials: Verify database username and password in server/.env (special characters must be URL encoded).
-  3. Cluster Status: Confirm MongoDB Atlas cluster 'Cluster0' is active and not paused.
-  4. Firewall / Proxy: Ensure port 27017 or outbound SSL/TLS traffic is not blocked by local firewall.
-======================================================
-    `);
+    // 4. Start Background Scheduled Weather Ingestion Worker (SIH26068)
+    weatherIngestionWorker.start();
+  } catch (err) {
+    logger.error(`[Server] ❌ Failed to start server: ${err.message}`, { stack: err.stack });
     process.exit(1);
-  });
+  }
+}
+
+// Graceful Shutdown Handler (Handles Render container lifecycle & Ctrl+C)
+async function gracefulShutdown(signal) {
+  logger.info(`[Server] ${signal} received. Shutting down gracefully...`);
+  try {
+    weatherIngestionWorker.stop();
+    if (socketService.io) {
+      logger.info('[Server] Closing Socket.IO connections...');
+      socketService.io.close();
+    }
+    if (mongoose.connection && mongoose.connection.readyState === 1) {
+      logger.info('[Server] Disconnecting MongoDB Atlas...');
+      await mongoose.disconnect();
+    }
+    server.close(() => {
+      logger.info('[Server] Server closed cleanly.');
+      process.exit(0);
+    });
+    setTimeout(() => {
+      logger.warn('[Server] Forcing shutdown after timeout.');
+      process.exit(0);
+    }, 10000).unref();
+  } catch (err) {
+    logger.error(`[Server] Error during shutdown: ${err.message}`);
+    process.exit(1);
+  }
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+startServer();

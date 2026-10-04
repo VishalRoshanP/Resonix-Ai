@@ -29,7 +29,7 @@ class InfrastructureDamageAnalysisService {
    */
   evaluateInfrastructure(visionRecord = {}, context = {}) {
     const photoId = visionRecord.photoId || `photo_${Date.now()}`;
-    const disasterType = (visionRecord.disaster_type || visionRecord.visibleDisaster || 'FLOOD').toUpperCase();
+    const disasterType = (visionRecord.disaster_type || visionRecord.visibleDisaster || visionRecord.category || 'GENERAL').toUpperCase();
     const severityTier = (visionRecord.severity_level || visionRecord.infrastructureDamage || 'HIGH').toUpperCase();
     const rawText = (visionRecord.overall_scene_description || '').toLowerCase();
     const citizenNotes = (context.citizenNotes || context.description || '').toLowerCase();

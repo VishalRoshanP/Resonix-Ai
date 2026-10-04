@@ -11,7 +11,7 @@ const STEPS = [
   },
   {
     title: 'Offline-First Architecture',
-    description: 'Resonix works without internet. Gemma 4 runs locally on your device, ensuring mission-critical operations never stop.',
+    description: 'Resonix works without internet. Emergency intelligence runs locally on your device, ensuring mission-critical operations never stop.',
     icon: 'wifi_off',
   },
   {
@@ -64,7 +64,7 @@ export default function OnboardingPage() {
           <h1 className="text-headline-md font-bold text-primary tracking-tight">RESONIX AI</h1>
           <p className="text-xs font-semibold text-secondary flex items-center justify-center gap-1.5 mt-0.5">
             <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
-            Powered by Gemma 4
+            Emergency intelligence and response support
           </p>
         </div>
 

@@ -35,7 +35,7 @@ const aiAnalysisSchema = new mongoose.Schema(
     },
     gemmaModel: {
       type: String,
-      default: 'google/gemma-4-e4b-it',
+      default: 'resonix-disaster-intelligence',
     },
     analyzedAt: {
       type: Date,

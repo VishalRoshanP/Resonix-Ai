@@ -14,7 +14,13 @@ const textUnderstandingSchema = new mongoose.Schema(
     },
     disaster: {
       type: String,
-      enum: ['FLOOD', 'FIRE', 'EARTHQUAKE', 'LANDSLIDE', 'CYCLONE', 'OTHER'],
+      enum: [
+        'FLOOD', 'FIRE', 'MEDICAL', 'BUILDING_COLLAPSE', 'CYCLONE_STORM', 'CYCLONE', 'STORM',
+        'EARTHQUAKE', 'LANDSLIDE', 'TSUNAMI', 'AVALANCHE', 'LIGHTNING', 'THUNDERSTORM', 'DUSTSTORM',
+        'SQUALL', 'HEATWAVE', 'COLDWAVE', 'DROUGHT', 'FOREST_FIRE', 'URBAN_FLOOD',
+        'CHEMICAL_EMERGENCY', 'BIOLOGICAL_EMERGENCY', 'NUCLEAR_RADIOLOGICAL_EMERGENCY', 'AIR_POLLUTION_SMOG',
+        'OTHER', 'GENERAL'
+      ],
       default: 'OTHER',
     },
     severity: {
@@ -61,7 +67,7 @@ const textUnderstandingSchema = new mongoose.Schema(
     },
     gemmaModel: {
       type: String,
-      default: 'google/gemma-4-e4b-it',
+      default: 'resonix-disaster-intelligence',
     },
   },
   {

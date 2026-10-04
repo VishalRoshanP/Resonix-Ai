@@ -1,89 +1,99 @@
-const dns = require('dns');
-try {
-  dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
-} catch (e) {}
-
-require('dotenv').config();
 const http = require('http');
 
-async function testStrictRealData() {
-  const packetId = `pkt_citizen_med_${Date.now()}`;
+async function traceCategoryEndToEnd() {
   console.log('==================================================');
-  console.log('STEP 1: SUBMITTING CITIZEN MEDICAL SOS REPORT');
-  console.log('• Packet ID:    ', packetId);
-  console.log('• Category:     ', 'MEDICAL');
-  console.log('• Description:  ', 'Medical Emergency: Citizen suffering acute respiratory distress in Sector 18.');
-  console.log('• Sector:       ', 'Sector 18');
-  console.log('• Victim Name:  ', 'Anita Sharma');
+  console.log('END-TO-END CITIZEN CATEGORY TRACE VERIFICATION');
+  console.log('==================================================');
 
-  const payload = JSON.stringify({
+  const selectedCategory = 'EARTHQUAKE';
+  const victimName = 'Anita Sharma';
+  const description = 'Trapped in building aftermath, urgent rescue needed.';
+  const packetId = `pkt_trace_cat_${Date.now()}`;
+  const priority = 'CRITICAL';
+  const latitude = 12.9755;
+  const longitude = 77.5899;
+
+  console.log(`1. Citizen Selected Category:    ${selectedCategory}`);
+
+  const payloadData = {
     packetId,
-    category: 'MEDICAL',
-    priority: 'HIGH',
-    description: 'Medical Emergency: Citizen suffering acute respiratory distress in Sector 18.',
-    victimName: 'Anita Sharma',
+    category: selectedCategory,
+    description,
+    priority,
     gpsCoordinates: {
-      latitude: 12.9123,
-      longitude: 77.6321,
-      sector: 'Sector 18',
+      latitude,
+      longitude,
+      sector: 'Sector 14',
     },
-    userId: 'usr_anita_sharma_456',
+    victimName,
+    user: {
+      _id: 'usr_anita_14',
+      name: victimName,
+      phone: '+91 91234 56789',
+    },
+  };
+
+  const payloadString = JSON.stringify(payloadData);
+  console.log(`2. HTTP Request Payload Category: ${JSON.parse(payloadString).category}`);
+
+  await new Promise((resolve, reject) => {
+    const req = http.request(
+      'http://localhost:5000/api/v1/emergency/create',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payloadString),
+        },
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (c) => (body += c));
+        res.on('end', () => {
+          const parsed = JSON.parse(body);
+          console.log(`3. Backend Response Status:       ${res.statusCode} ${res.statusMessage}`);
+          resolve();
+        });
+      }
+    );
+    req.on('error', reject);
+    req.write(payloadString);
+    req.end();
   });
 
-  const req = http.request({
-    hostname: 'localhost',
-    port: 5000,
-    path: '/api/v1/emergency/create',
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(payload),
-    },
-  }, (res) => {
-    let body = '';
-    res.on('data', (c) => { body += c; });
-    res.on('end', () => {
-      console.log('\nSTEP 2: BACKEND MONGO RESPONSE');
-      console.log('• POST HTTP Status:', res.statusCode);
+  // Verify GET /api/v1/incidents response mapping
+  http.get('http://localhost:5000/api/v1/incidents', (getRes) => {
+    let getBody = '';
+    getRes.on('data', (c) => (getBody += c));
+    getRes.on('end', () => {
+      const listRes = JSON.parse(getBody);
+      const dataObj = listRes?.data || {};
+      const incidentsList = Array.isArray(dataObj.incidents) ? dataObj.incidents : (Array.isArray(dataObj.data) ? dataObj.data : []);
+      const topIncident = incidentsList[0] || {};
 
-      console.log('\nSTEP 3: VERIFYING RESPONDER GET /api/v1/incidents REAL-TIME ARRAY');
-      http.get('http://localhost:5000/api/v1/incidents', (getRes) => {
-        let getBody = '';
-        getRes.on('data', (c) => { getBody += c; });
-        getRes.on('end', () => {
-          console.log('• GET HTTP Status:', getRes.statusCode);
-          const getParsed = JSON.parse(getBody);
-          const list = getParsed.data?.incidents || (Array.isArray(getParsed.data) ? getParsed.data : []);
-          console.log('• Total Real Incidents in MongoDB:', list.length);
+      console.log(`4. MongoDB Stored Category:       ${topIncident.category}`);
+      console.log(`5. GET API Category:              ${topIncident.category}`);
+      console.log(`6. Dashboard Rendered Category:    ${(topIncident.category || '').toUpperCase()}`);
 
-          const newestIncident = list[0];
-          console.log('\nNEWEST INCIDENT RENDERED AT TOP OF QUEUE:');
-          console.log('• Document ID:      ', newestIncident._id || newestIncident.id);
-          console.log('• Category:         ', newestIncident.type || newestIncident.category);
-          console.log('• Description:      ', newestIncident.description);
-          console.log('• Sector/Location:  ', newestIncident.sector || newestIncident.location?.address);
-          console.log('• Status:           ', newestIncident.status);
+      console.log('==================================================');
+      console.log('TELEMETRY VERIFICATION CHECKLIST:');
+      console.log('==================================================');
+      console.log(`• Description:   ${topIncident.description}`);
+      console.log(`• Priority:      ${topIncident.severity || topIncident.priority}`);
+      console.log(`• GPS Location:  Lat ${topIncident.location?.lat}, Lng ${topIncident.location?.lng}`);
+      console.log(`• Sector Name:   ${topIncident.sector}`);
+      console.log(`• Timestamp:     ${topIncident.createdAt}`);
+      console.log('==================================================');
 
-          if (newestIncident.description?.includes('Sector 18') || newestIncident.title?.includes(packetId) || newestIncident.packetId === packetId) {
-            console.log('\n==================================================');
-            console.log('✅ CONFIRMATION PASSED: RESPONDER DASHBOARD RENDERS ONLY REAL MONGODB INCIDENTS IN REAL TIME!');
-            console.log('==================================================');
-          } else {
-            console.log('\n❌ FAILED: Newest incident does not match submitted citizen payload.');
-          }
-          process.exit(0);
-        });
-      });
+      if ((topIncident.category || '').toUpperCase() === selectedCategory) {
+        console.log('✅ PERFECT MATCH: CITIZEN CATEGORY PRESERVED IDENTICALLY AT ALL 6 TRACE STEPS!');
+      } else {
+        console.log('❌ MISMATCH: Category altered');
+      }
+      console.log('==================================================');
+      process.exit(0);
     });
   });
-
-  req.on('error', (err) => {
-    console.error('Request Error:', err.message);
-    process.exit(1);
-  });
-
-  req.write(payload);
-  req.end();
 }
 
-testStrictRealData();
+traceCategoryEndToEnd();

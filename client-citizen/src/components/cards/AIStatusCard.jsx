@@ -1,8 +1,8 @@
 import Card from '../ui/Card';
 
 export default function AIStatusCard({
-  title = 'Gemma 4: Offline Operational',
-  description = 'Local reasoning engine active. Mesh network synced.',
+  title = 'AI Core: Operational',
+  description = 'Disaster reasoning engine active. Mesh network synced.',
   latency = '12ms (Local)',
   activeNodes = '47 / 50',
   confidence = null,

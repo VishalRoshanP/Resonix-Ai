@@ -144,7 +144,7 @@ export default function EmergencyPacketWidget({ currentAudio, currentPhoto }) {
             <div>Audio: <strong className="text-primary">{activePacket.audioReference.hasAudio ? 'Attached' : 'None'}</strong></div>
             <div>Photo: <strong className="text-primary">{activePacket.photoReference.hasPhoto ? 'Attached' : 'None'}</strong></div>
             <div>GPS: <strong className="text-primary">{activePacket.gpsCoordinates.hasGps ? `${activePacket.gpsCoordinates.latitude?.toFixed(4)}, ${activePacket.gpsCoordinates.longitude?.toFixed(4)}` : 'None'}</strong></div>
-            <div>Gemma 4: <strong className="text-emerald-400">Ready</strong></div>
+            <div>AI Core: <strong className="text-emerald-400">Ready</strong></div>
           </div>
         </div>
       )}

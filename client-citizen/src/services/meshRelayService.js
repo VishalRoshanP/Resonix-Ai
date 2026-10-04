@@ -30,6 +30,7 @@ class MeshRelayService {
     this.isRelayActive = false;
     this.relayLoopTimer = null;
     this.processedMessageIds = new Set();
+    this.inFlightUploads = new Set();
     this.relaySubscribers = new Set();
 
     this.relayedPacketsCount = 0;
@@ -102,8 +103,36 @@ class MeshRelayService {
 
     const myDeviceId = offlineCommunicationService.getDeviceId();
     const isOnline = offlineCommunicationService.isOnline();
+    const now = Date.now();
+    const MAX_AGE_MS = 60 * 60 * 1000; // 1 hour staleness threshold
 
     for (const sosRecord of queue) {
+      const idempotencyKey = sosRecord.clientRequestId || sosRecord.packetId || sosRecord.messageId;
+      if (this.inFlightUploads.has(idempotencyKey)) {
+        continue;
+      }
+
+      // Auto-prune CANCELLED or DELIVERED records
+      if (sosRecord.deliveryStatus === 'CANCELLED' || sosRecord.deliveryStatus === DELIVERY_STATUS.DELIVERED) {
+        offlineCommunicationService.removeMessage(sosRecord.messageId || sosRecord.sosId);
+        continue;
+      }
+
+      // Auto-prune stale packets older than 1 hour (leftover from prior dev sessions)
+      const recordTime = sosRecord.timestamp ? new Date(sosRecord.timestamp).getTime() : 0;
+      if (recordTime > 0 && (now - recordTime) > MAX_AGE_MS) {
+        console.warn(`[MeshRelayService] 🗑️ Pruning stale packet ${sosRecord.messageId} (age: ${Math.round((now - recordTime) / 60000)} min). Too old for retry.`);
+        offlineCommunicationService.removeMessage(sosRecord.messageId || sosRecord.sosId);
+        continue;
+      }
+
+      // Auto-prune packets that have exceeded max retry attempts (persisted in queue)
+      if ((sosRecord.retryCount || 0) >= 5) {
+        console.warn(`[MeshRelayService] 🗑️ Pruning packet ${sosRecord.messageId} after ${sosRecord.retryCount} persisted failed attempts.`);
+        offlineCommunicationService.removeMessage(sosRecord.messageId || sosRecord.sosId);
+        continue;
+      }
+
       // 1. If local device is ONLINE, automatically upload pending SOS to server
       if (isOnline && sosRecord.deliveryStatus !== DELIVERY_STATUS.DELIVERED) {
         await this._uploadSOSToServer(sosRecord);
@@ -270,21 +299,34 @@ class MeshRelayService {
   // --- Automatic Server Upload On Network Connection ---
 
   async _uploadSOSToServer(sosRecord) {
+    // Use the ORIGINAL clientRequestId as the idempotency key — never generate a new one
+    const originalIdempotencyKey = sosRecord.clientRequestId || sosRecord.packetId || sosRecord.messageId;
+
+    if (this.inFlightUploads.has(originalIdempotencyKey)) {
+      return;
+    }
+    this.inFlightUploads.add(originalIdempotencyKey);
+
     try {
-      console.log(`[MeshRelayService] 🌐 Internet connectivity active! Uploading multi-hop SOS ${sosRecord.messageId} (Relay Count: ${sosRecord.relayCount}) to Express backend...`);
+      console.log(`[MeshRelayService] 🌐 Internet connectivity active! Uploading multi-hop SOS ${originalIdempotencyKey} (Relay Count: ${sosRecord.relayCount}) to Express backend...`);
       
       const payload = {
-        packetId: sosRecord.messageId,
+        packetId: originalIdempotencyKey,
+        clientRequestId: originalIdempotencyKey,
         userId: sosRecord.userId || 'usr_guest',
         deviceId: sosRecord.deviceId,
-        description: sosRecord.emergencyText || 'Multi-hop mesh relayed emergency dispatch',
-        voiceTranscript: sosRecord.voiceTranscript || '',
-        category: 'FLOOD',
-        selectedLanguage: 'en',
+        description: sosRecord.emergencyText || sosRecord.description || sosRecord.voiceTranscript || 'Multi-hop mesh relayed emergency dispatch',
+        voiceTranscript: sosRecord.voiceTranscript || sosRecord.emergencyText || '',
+        originalVoiceTranscript: sosRecord.originalVoiceTranscript || sosRecord.voiceTranscript || '',
+        detectedLanguage: sosRecord.detectedLanguage || sosRecord.selectedLanguage || 'en',
+        englishTranslation: sosRecord.englishTranslation || sosRecord.voiceTranscript || '',
+        category: sosRecord.category || sosRecord.type || sosRecord.disasterCategory || 'GENERAL',
+        priority: sosRecord.priority || 'HIGH',
+        selectedLanguage: sosRecord.selectedLanguage || 'en',
         gpsCoordinates: {
-          latitude: sosRecord.latitude,
-          longitude: sosRecord.longitude,
-          status: sosRecord.latitude ? 'GPS_AVAILABLE' : 'GPS_UNAVAILABLE',
+          latitude: sosRecord.latitude || sosRecord.gpsCoordinates?.latitude,
+          longitude: sosRecord.longitude || sosRecord.gpsCoordinates?.longitude,
+          status: (sosRecord.latitude || sosRecord.gpsCoordinates?.latitude) ? 'GPS_AVAILABLE' : 'GPS_UNAVAILABLE',
         },
         relayMetadata: {
           relayCount: sosRecord.relayCount,
@@ -297,6 +339,8 @@ class MeshRelayService {
       const isConfirmed = Boolean(
         response &&
           (response.status === 'success' ||
+            response.success === true ||
+            response.isDuplicate === true ||
             response.statusCode === 201 ||
             response.statusCode === 200 ||
             response.data?.packet ||
@@ -304,11 +348,12 @@ class MeshRelayService {
       );
 
       if (isConfirmed) {
-        console.log(`[MeshRelayService] ✅ Server confirmed delivery for multi-hop SOS ${sosRecord.messageId}. Updating status to DELIVERED.`);
+        console.log(`[MeshRelayService] ✅ Server confirmed delivery for multi-hop SOS ${originalIdempotencyKey}. Updating status to DELIVERED.`);
         
         // Mark status as DELIVERED and prune from local queue
         offlineCommunicationService.updateMessageStatus(sosRecord.messageId, DELIVERY_STATUS.DELIVERED);
         offlineCommunicationService.removeMessage(sosRecord.messageId);
+        offlineCommunicationService.removeMessage(originalIdempotencyKey);
 
         this._notifyRelaySubscribers({
           type: 'SERVER_UPLOAD_SUCCESS',
@@ -317,7 +362,56 @@ class MeshRelayService {
         });
       }
     } catch (err) {
-      console.warn(`[MeshRelayService] Server upload error for ${sosRecord.messageId}: ${err.message}. Retaining in persistent queue for retry.`);
+      // 1. Idempotent duplicate: treat as successfully synchronized
+      if (err.status === 409 || err.isDuplicate || err.data?.isDuplicate) {
+        console.log(`[MeshRelayService] 🔁 Server confirmed existing idempotent SOS ${originalIdempotencyKey}. Marking DELIVERED.`);
+        offlineCommunicationService.updateMessageStatus(sosRecord.messageId, DELIVERY_STATUS.DELIVERED);
+        offlineCommunicationService.removeMessage(sosRecord.messageId);
+        offlineCommunicationService.removeMessage(originalIdempotencyKey);
+        return;
+      }
+
+      // 2. Client Validation error (400/422): invalid payload, do not endlessly retry
+      if (err.status >= 400 && err.status < 500 && err.status !== 408 && err.status !== 429) {
+        console.warn(`[MeshRelayService] ❌ Pruning invalid packet ${sosRecord.messageId} (HTTP ${err.status}): ${err.message}`);
+        offlineCommunicationService.removeMessage(sosRecord.messageId);
+        offlineCommunicationService.removeMessage(originalIdempotencyKey);
+        return;
+      }
+
+      // 3. Server timeout or network error: retain for retry with backoff
+      const newRetryCount = (sosRecord.retryCount || 0) + 1;
+      if (newRetryCount >= 5) {
+        console.warn(`[MeshRelayService] 🗑️ Pruning unrecoverable/stale packet ${sosRecord.messageId} after ${newRetryCount} failed attempt(s): ${err.message}`);
+        offlineCommunicationService.removeMessage(sosRecord.messageId);
+        offlineCommunicationService.removeMessage(originalIdempotencyKey);
+      } else {
+        // Persist retryCount back to localStorage so it survives across relay cycles
+        this._persistRetryCount(sosRecord.messageId, newRetryCount);
+        console.warn(`[MeshRelayService] Server upload error for ${sosRecord.messageId} (Attempt ${newRetryCount}): ${err.message}. Retaining for retry.`);
+      }
+    } finally {
+      this.inFlightUploads.delete(originalIdempotencyKey);
+    }
+  }
+
+  /**
+   * Persist retry count back to localStorage so it survives across relay cycles.
+   * Without this, retryCount is only in-memory and resets to 0 every 4 seconds.
+   */
+  _persistRetryCount(messageId, count) {
+    try {
+      const raw = localStorage.getItem('resonix_offline_sos_messages');
+      if (!raw) return;
+      const queue = JSON.parse(raw);
+      if (!Array.isArray(queue)) return;
+      const target = queue.find((m) => m && m.messageId === messageId);
+      if (target) {
+        target.retryCount = count;
+        localStorage.setItem('resonix_offline_sos_messages', JSON.stringify(queue));
+      }
+    } catch (e) {
+      // Non-critical — next cycle will still try
     }
   }
 }

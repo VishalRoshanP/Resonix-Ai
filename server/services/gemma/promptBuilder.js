@@ -1,6 +1,6 @@
 /**
- * Prompt Builder Utility for Gemma 4 E4B
- * Formats system context, user inputs, and structured JSON requirements for Gemma inference.
+ * Prompt Builder Utility for RESONIX AI
+ * Formats system context, user inputs, and structured JSON requirements for AI inference.
  */
 
 class PromptBuilder {

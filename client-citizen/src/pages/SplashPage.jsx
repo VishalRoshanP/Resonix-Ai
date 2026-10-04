@@ -42,7 +42,7 @@ export default function SplashPage() {
         </div>
         <h1 className="text-display-lg text-white mb-1 tracking-tight">RESONIX AI</h1>
         <p className="text-headline-md font-semibold text-secondary tracking-wide mb-2">
-          Powered by Gemma 4
+          Emergency Intelligence and Response Support
         </p>
         <p className="text-label-sm uppercase tracking-[0.2em] text-primary-fixed-dim">
           Disaster Intelligence Platform
@@ -58,7 +58,7 @@ export default function SplashPage() {
           />
         </div>
         <p className="text-label-sm text-on-primary-container mt-3">
-          Initializing Gemma 4 Engine...
+          Initializing Emergency Intelligence Engine...
         </p>
       </div>
 

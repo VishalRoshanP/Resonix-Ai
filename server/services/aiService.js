@@ -1,6 +1,6 @@
 /**
- * Gemma 4 E4B Central Integration Facade
- * Delegates all AI capabilities in RESONIX AI to the Gemma 4 E4B architecture.
+ * Disaster Intelligence Integration Facade
+ * Coordinates AI capabilities in RESONIX AI for disaster management.
  * Implements AI Incident Timelines, Multilingual Reporting, XAI reasoning, Duplicate Detection, and Resource Recommendations.
  */
 
@@ -11,7 +11,7 @@ const gemmaService = require('./gemma');
  * Stages: 0: Emergency Reported, 1: AI Analyzed, 2: Responder Assigned, 3: Resources Dispatched, 4: Responder Arrived, 5: Mission Completed.
  */
 const generateTimelineSituationUpdate = (stageIndex, incidentPayload = {}) => {
-  const category = incidentPayload.category || incidentPayload.disasterCategory || 'FLOOD';
+  const category = incidentPayload.category || incidentPayload.disasterCategory || incidentPayload.type || 'GENERAL';
   const unit = incidentPayload.assignedUnit || 'NDRF Battalion 4 Boat Squad #4';
   const location = incidentPayload.location || 'Sector 4, Koramangala';
 
@@ -81,48 +81,33 @@ const generateTimelineSituationUpdate = (stageIndex, incidentPayload = {}) => {
 /**
  * Detects citizen input language, understands original text/transcript, and generates a standardized English incident summary for emergency responders.
  */
+const languageDetectionService = require('./pipeline/languageDetectionService');
+
 const processMultilingualEmergencyReport = async (payload = {}) => {
-  const selectedLang = payload.selectedLanguage || payload.language || 'hi-IN';
   const rawText =
     payload.transcript ||
+    payload.voiceTranscript ||
     payload.description ||
-    'Sector 4 me paani bohot bhar gaya hai, kripya rescue boat bheje!';
+    payload.text ||
+    '';
 
-  const LANG_MAP = {
-    'hi-IN': 'Hindi (hi-IN)',
-    'ta-IN': 'Tamil (ta-IN)',
-    'te-IN': 'Telugu (te-IN)',
-    'bn-IN': 'Bengali (bn-IN)',
-    'mr-IN': 'Marathi (mr-IN)',
-    'gu-IN': 'Gujarati (gu-IN)',
-    'kn-IN': 'Kannada (kn-IN)',
-    'ml-IN': 'Malayalam (ml-IN)',
-    'pa-IN': 'Punjabi (pa-IN)',
-    'en-US': 'English (en-US)',
+  const speechMeta = {
+    transcript: rawText,
+    processedTranscript: rawText,
   };
 
-  const originalLanguage = LANG_MAP[selectedLang] || `Detected (${selectedLang})`;
-
-  let translatedSummary = rawText;
-  if (selectedLang.startsWith('hi')) {
-    translatedSummary = 'Water levels are rising rapidly in Sector 4, please send a rescue boat immediately!';
-  } else if (selectedLang.startsWith('ta')) {
-    translatedSummary = 'Sector 4 water logging is severe, 3 residents trapped on upper roof floor.';
-  } else if (selectedLang.startsWith('te')) {
-    translatedSummary = 'Heavy flood water entering houses near highway crossing, urgent assistance needed.';
-  } else if (selectedLang.startsWith('bn')) {
-    translatedSummary = 'Flash flood water rising up to 1.5m near residential block.';
-  }
-
-  const aiSummary =
-    'Flash flood warning in Sector 4; 3 residents trapped on upper roof requiring immediate NDRF boat dispatch.';
+  const detected = languageDetectionService.detect(speechMeta, payload);
 
   return {
-    originalLanguage,
-    originalText: rawText,
-    translatedSummary,
-    aiSummary,
-    model: 'google/gemma-4-e4b-it',
+    originalLanguage: detected.detectedLanguage || 'unknown',
+    detectedLanguage: detected.detectedLanguage || 'unknown',
+    originalText: detected.originalTranscript || rawText,
+    translatedSummary: detected.normalizedTranscript || rawText,
+    aiSummary: `Processed ${detected.detectedLanguage} emergency report with ${Math.round(detected.confidence * 100)}% detection certainty.`,
+    scriptName: detected.scriptName,
+    detectionConfidence: detected.confidence,
+    isCodeMixed: Boolean(detected.isMixedLanguage),
+    model: 'resonix-disaster-intelligence',
     processedAt: new Date().toISOString(),
   };
 };
@@ -131,7 +116,7 @@ const processMultilingualEmergencyReport = async (payload = {}) => {
  * Uses Gemma 4 AI reasoning to recommend emergency resources with explicit rationale.
  */
 const recommendEmergencyResources = (incidentPayload = {}) => {
-  const category = (incidentPayload.category || incidentPayload.disasterCategory || 'FLOOD').toUpperCase();
+  const category = (incidentPayload.category || incidentPayload.disasterCategory || incidentPayload.type || 'GENERAL').toUpperCase();
   const priority = (incidentPayload.priority || incidentPayload.severity || 'CRITICAL').toUpperCase();
   const victimCount = incidentPayload.victimCount || 3;
   const location = incidentPayload.location || 'Sector 4, Koramangala';
@@ -201,10 +186,10 @@ const recommendEmergencyResources = (incidentPayload = {}) => {
   }
 
   return {
-    incidentId: incidentPayload.id || incidentPayload.incidentId || 'INC-2026-0894',
+    incidentId: incidentPayload.id || incidentPayload.incidentId || incidentPayload.packetId || null,
     totalRecommendedUnits: recommendations.length,
     recommendations,
-    model: 'google/gemma-4-e4b-it',
+    model: 'resonix-disaster-intelligence',
     generatedAt: new Date().toISOString(),
   };
 };
@@ -215,15 +200,15 @@ const recommendEmergencyResources = (incidentPayload = {}) => {
 const detectDuplicateIncidents = (newReport = {}, existingIncidents = []) => {
   const duplicates = [];
 
-  const newLat = parseFloat(newReport.gpsCoordinates?.latitude || newReport.lat || 12.9716);
-  const newLng = parseFloat(newReport.gpsCoordinates?.longitude || newReport.lng || 77.5946);
-  const newCat = (newReport.category || newReport.disasterCategory || 'FLOOD').toUpperCase();
+  const newLat = newReport.gpsCoordinates?.latitude != null ? parseFloat(newReport.gpsCoordinates.latitude) : (newReport.lat != null ? parseFloat(newReport.lat) : null);
+  const newLng = newReport.gpsCoordinates?.longitude != null ? parseFloat(newReport.gpsCoordinates.longitude) : (newReport.lng != null ? parseFloat(newReport.lng) : null);
+  const newCat = (newReport.category || newReport.disasterCategory || newReport.type || 'GENERAL').toUpperCase();
   const newTime = new Date(newReport.timestamp || newReport.time || Date.now()).getTime();
 
   for (const existing of existingIncidents) {
-    const exLat = parseFloat(existing.gpsCoordinates?.latitude || existing.lat || 12.9716);
-    const exLng = parseFloat(existing.gpsCoordinates?.longitude || existing.lng || 77.5946);
-    const exCat = (existing.category || existing.disasterCategory || 'FLOOD').toUpperCase();
+    const exLat = existing.gpsCoordinates?.latitude != null ? parseFloat(existing.gpsCoordinates.latitude) : (existing.lat != null ? parseFloat(existing.lat) : null);
+    const exLng = existing.gpsCoordinates?.longitude != null ? parseFloat(existing.gpsCoordinates.longitude) : (existing.lng != null ? parseFloat(existing.lng) : null);
+    const exCat = (existing.category || existing.disasterCategory || existing.type || 'GENERAL').toUpperCase();
     const exTime = new Date(existing.timestamp || existing.time || Date.now()).getTime();
 
     const categoryMatches = newCat === exCat;
@@ -293,7 +278,7 @@ const generateXaiExplanations = ({ category, priority, transcript, description, 
     description ? 'text description, ' : ''
   }${hasPhoto ? 'disaster scene photo metadata, ' : ''}${
     hasGps ? 'precise GPS location coordinates, ' : ''
-  }via Gemma 4 E4B inference.`;
+  }via emergency AI inference.`;
 
   return {
     priorityReason,
@@ -303,39 +288,21 @@ const generateXaiExplanations = ({ category, priority, transcript, description, 
 };
 
 /**
- * Rule-based heuristic fallback if AI model or network connection is unavailable.
+ * Heuristic fallback if AI model or network connection is unavailable.
+ * Delegates directly to the multilingual semantic emergency engine.
  */
 const getRuleBasedFallback = (payload = {}) => {
-  const text = `${payload.description || ''} ${payload.transcript || ''} ${payload.category || ''}`.toUpperCase();
+  const semanticEmergencyInterpreter = require('./speech/semanticEmergencyInterpreter');
+  const semantic = semanticEmergencyInterpreter.interpretDeterministic({
+    transcript: payload.transcript || payload.voiceTranscript || '',
+    text: payload.description || payload.text || '',
+    selectedCategory: payload.selectedCategory || payload.category || 'GENERAL',
+  });
 
-  let category = 'FLOOD';
-  if (text.includes('FIRE') || text.includes('SMOKE') || text.includes('FLAME')) category = 'FIRE';
-  else if (text.includes('COLLAPSE') || text.includes('TRAPPED') || text.includes('DEBRIS')) category = 'BUILDING_COLLAPSE';
-  else if (text.includes('DOCTOR') || text.includes('BLEEDING') || text.includes('HEART') || text.includes('MEDICAL')) category = 'MEDICAL';
-  else if (text.includes('STORM') || text.includes('CYCLONE') || text.includes('WIND')) category = 'STORM';
-  else if (text.includes('EARTHQUAKE') || text.includes('QUAKE') || text.includes('SHAKING')) category = 'EARTHQUAKE';
-
-  let severity = 'CRITICAL';
-  let priority = 'CRITICAL';
-  let recommendedResponseTeam = 'NDRF Battalion 4 Water Rescue Squad';
-
-  if (category === 'FIRE') {
-    severity = 'HIGH';
-    priority = 'HIGH';
-    recommendedResponseTeam = 'Fire Rescue Unit #12';
-  } else if (category === 'MEDICAL') {
-    severity = 'HIGH';
-    priority = 'HIGH';
-    recommendedResponseTeam = 'Emergency Medical Ambulance 108';
-  } else if (category === 'BUILDING_COLLAPSE') {
-    severity = 'CRITICAL';
-    priority = 'CRITICAL';
-    recommendedResponseTeam = 'NDRF Search Squad 2';
-  } else if (category === 'STORM') {
-    severity = 'MEDIUM';
-    priority = 'MEDIUM';
-    recommendedResponseTeam = 'Police Control Room Patrol 5';
-  }
+  const category = semantic.category || 'OTHER';
+  const severity = semantic.severity || 'HIGH';
+  const priority = semantic.priority || 'HIGH';
+  const recommendedResponseTeam = semantic.category === 'FIRE' ? 'Fire Rescue Unit #12' : semantic.category === 'FLOOD' ? 'NDRF Battalion 4 Water Rescue Squad' : semantic.category === 'MEDICAL' ? 'Emergency Medical Ambulance 108' : 'Emergency Response Unit';
 
   const rawSummary = payload.description || payload.transcript || `Emergency report analyzed for ${category} hazard.`;
   const summary =
@@ -360,8 +327,8 @@ const getRuleBasedFallback = (payload = {}) => {
     recommendedPriority: priority,
     recommendedResponseTeam,
     explanations,
-    reasoningExplanation: explanations?.overallReasoning || `Gemma 4 model evaluated emergency telemetry (${category}), location coordinates, and voice transcript.`,
-    model: 'google/gemma-4-e4b-it',
+    reasoningExplanation: explanations?.overallReasoning || `Emergency AI model evaluated emergency telemetry (${category}), location coordinates, and voice transcript.`,
+    model: 'resonix-disaster-intelligence',
     analyzedAt: new Date().toISOString(),
     fallbackActive: true,
   };

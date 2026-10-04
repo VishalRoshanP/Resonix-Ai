@@ -52,7 +52,7 @@ export default function Sidebar({ isMobileOpen = false, onCloseMobile }) {
           <h2 className="text-headline-md font-bold text-primary tracking-tight">RESONIX AI</h2>
           <p className="text-xs font-semibold text-secondary flex items-center gap-1.5 mt-0.5">
             <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
-            Powered by Gemma 4
+            Disaster Intelligence Core
           </p>
           <div className="mt-2 text-label-sm uppercase tracking-wider text-on-surface-variant flex items-center gap-1.5">
             <span className={cn(

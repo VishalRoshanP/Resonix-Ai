@@ -41,43 +41,52 @@ const DEFAULT_USERS = {
 };
 
 export function AuthProvider({ children }) {
-  const [responderUser, setResponderUser] = useState(() => tokenManager.getUser() || DEFAULT_USERS.Administrator);
+  const [responderUser, setResponderUser] = useState(() => tokenManager.getUser());
   const [isAuthenticated, setIsAuthenticated] = useState(() => tokenManager.hasToken());
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Session token validation on app mount
+    // Session token validation on app mount — retry with backoff for cold-boot race
     const token = tokenManager.getToken();
     if (token) {
-      authService
-        .getCurrentUser()
-        .then((u) => {
-          if (u) {
-            setResponderUser(u);
-            setIsAuthenticated(true);
-          }
-        })
-        .catch(() => {
-          // Token expired or invalid
-        });
+      let attempt = 0;
+      const maxRetries = 3;
+      const tryValidate = () => {
+        authService
+          .getCurrentUser()
+          .then((u) => {
+            if (u) {
+              setResponderUser(u);
+              setIsAuthenticated(true);
+            }
+          })
+          .catch(() => {
+            attempt++;
+            if (attempt < maxRetries) {
+              setTimeout(tryValidate, 1000 * Math.pow(2, attempt - 1));
+            }
+            // After max retries, silently fall through — offline / server not yet ready
+          });
+      };
+      tryValidate();
     }
   }, []);
 
   const login = useCallback(async (email, password, role = 'Administrator', rememberMe = true) => {
     setLoading(true);
     try {
-      // Attempt backend login
+      // Execute REAL Express Backend login API
       const res = await authService.login(email, password, role);
 
-      const baseUser = DEFAULT_USERS[role] || DEFAULT_USERS.Administrator;
-      const userObj = res?.data?.user || {
-        ...baseUser,
-        email: email || baseUser.email,
-        role: role || baseUser.role,
-      };
+      const userObj = res?.data?.user;
+      const token = res?.data?.token;
+
+      if (!token || !userObj) {
+        throw new Error('Authentication failed: Invalid response payload from server.');
+      }
 
       if (rememberMe) {
-        tokenManager.setToken(res?.data?.token || `jwt_resp_${Date.now()}`);
+        tokenManager.setToken(token);
         tokenManager.setUser(userObj);
       }
 

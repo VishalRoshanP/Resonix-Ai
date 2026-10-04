@@ -35,11 +35,12 @@ const isAllowedOrigin = (origin) => {
     return true;
   }
 
-  // Allow local development LAN IPs (10.x.x.x, 192.168.x.x, 172.16-31.x.x)
+  // Allow production deployment domains (Render, Vercel, Netlify, GitHub Pages)
   if (
-    /^https?:\/\/(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?$/.test(
-      origin
-    )
+    origin.endsWith('.onrender.com') ||
+    origin.endsWith('.vercel.app') ||
+    origin.endsWith('.netlify.app') ||
+    origin.endsWith('.github.io')
   ) {
     return true;
   }
@@ -61,5 +62,7 @@ const corsMiddleware = cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   optionsSuccessStatus: 200,
 });
+
+corsMiddleware.isAllowedOrigin = isAllowedOrigin;
 
 module.exports = corsMiddleware;

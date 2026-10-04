@@ -1,108 +1,176 @@
+import React, { useState, useEffect } from 'react';
 import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 import { getLocalPackets } from '../../services/emergencyPacketManager';
+import { offlineCommunicationService } from '../../services/offlineCommunicationService';
+import OfflineSyncStatusModal from './OfflineSyncStatusModal';
 
 export default function NetworkStatusWidget({ compact = false }) {
   const { isOnline, relayStatus, isSyncingQueue, lastSyncResult, syncLocalQueueToBackend } = useNetworkStatus();
-  const queuedCount = getLocalPackets().length;
+  const [pendingCount, setPendingCount] = useState(() => Math.max(getLocalPackets().length, offlineCommunicationService.getPendingCount()));
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  useEffect(() => {
+    const updateCount = () => {
+      setPendingCount(Math.max(getLocalPackets().length, offlineCommunicationService.getPendingCount()));
+    };
+
+    updateCount();
+    const unsub = offlineCommunicationService.onQueueChange(() => updateCount());
+    const interval = setInterval(updateCount, 3000);
+
+    return () => {
+      unsub();
+      clearInterval(interval);
+    };
+  }, []);
 
   if (compact) {
     return (
-      <div className="inline-flex items-center gap-1.5 text-xs font-semibold">
-        {isOnline ? (
-          <span className="flex items-center gap-1 text-emerald-800 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-            Online
-          </span>
-        ) : (
-          <span className="flex items-center gap-1 text-amber-800 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30" title="Offline Mode - Searching for Relay...">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse" />
-            Offline Mesh
-          </span>
-        )}
-      </div>
+      <>
+        <div className="inline-flex items-center gap-1.5 text-xs font-semibold">
+          {isOnline ? (
+            <span className="flex items-center gap-1 text-emerald-800 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+              Online
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-amber-800 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30" title="Offline Mode - Searching for Relay...">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse" />
+              Offline Mesh
+            </span>
+          )}
+
+          {pendingCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 dark:text-amber-300 bg-amber-500/20 hover:bg-amber-500/30 px-2 py-0.5 rounded-full border border-amber-500/40 cursor-pointer transition-colors"
+              title="Click to view pending offline emergency reports"
+            >
+              <span className="material-symbols-outlined text-xs">sync_saved_locally</span>
+              {pendingCount} Pending
+            </button>
+          )}
+        </div>
+
+        <OfflineSyncStatusModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      </>
     );
   }
 
   return (
-    <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4 sm:p-5 text-left space-y-3 shadow-sm animate-fade-in overflow-hidden">
-      {/* Online Mode State */}
-      {isOnline ? (
-        <div className="space-y-2 min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse shrink-0" />
-              <span className="font-bold text-primary text-sm">Network Connected</span>
-            </div>
-
-            <span className="text-[9px] sm:text-[10px] font-bold uppercase bg-emerald-500/10 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-500/30 whitespace-nowrap shrink-0">
-              Direct Server
-            </span>
-          </div>
-
-          <p className="text-xs text-on-surface-variant leading-relaxed">
-            Emergency packets will be transmitted directly to the RESONIX AI backend API.
-          </p>
-
-          {isSyncingQueue && (
-            <div className="p-2.5 bg-secondary/10 border border-secondary/20 rounded-xl text-xs font-semibold text-secondary flex items-center gap-2 min-w-0">
-              <span className="material-symbols-outlined text-base animate-spin shrink-0">sync</span>
-              <span className="break-words">Syncing locally queued packets to backend...</span>
-            </div>
-          )}
-
-          {lastSyncResult && (
-            <div className="text-[10px] font-mono text-emerald-800 font-semibold">
-              ✓ Synced {lastSyncResult.syncedCount} packet(s) upon network restoration.
-            </div>
-          )}
-        </div>
-      ) : (
-        /* Offline Mode State with "Searching for Relay..." */
-        <div className="p-3.5 bg-amber-50 border border-amber-300/60 rounded-xl space-y-3 min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 text-amber-900 font-bold text-sm min-w-0">
-              <span className="material-symbols-outlined text-lg shrink-0">wifi_off</span>
-              <span>Offline Mode</span>
-            </div>
-
-            <span className="text-[9px] sm:text-[10px] font-bold uppercase bg-amber-500/15 text-amber-900 px-2 py-0.5 rounded-full border border-amber-400/50 whitespace-nowrap shrink-0">
-              Mesh Relay Active
-            </span>
-          </div>
-
-          {/* Searching for Relay Indicator with Radar Pulse Animation */}
-          <div className="flex items-center gap-3 p-3 bg-surface-container/60 border border-amber-300/30 rounded-lg min-w-0">
-            <div className="relative flex items-center justify-center shrink-0">
-              <span className="w-8 h-8 rounded-full bg-amber-400/20 animate-ping absolute" />
-              <span className="material-symbols-outlined text-amber-700 text-xl relative z-10">
-                cell_tower
-              </span>
-            </div>
-
-            <div className="min-w-0">
-              <div className="text-xs font-bold text-amber-900 flex items-center gap-1">
-                Searching for Relay...
+    <>
+      <div className="bg-surface-container border border-outline-variant/60 rounded-xl p-3 sm:p-3.5 text-left shadow-xs transition-all animate-fade-in">
+        {isOnline ? (
+          <div className="flex items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <span className="w-3 h-3 rounded-full bg-emerald-600 animate-pulse shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-xs text-emerald-800 dark:text-emerald-300 leading-tight">
+                    Network Connected
+                  </span>
+                  <span className="text-[10px] font-bold uppercase bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 px-1.5 py-0.2 rounded border border-emerald-500/30 whitespace-nowrap shrink-0">
+                    Direct Server
+                  </span>
+                  {pendingCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(true)}
+                      className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 px-2 py-0.5 rounded-full border border-amber-500/30 cursor-pointer transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-xs">sync_saved_locally</span>
+                      {pendingCount} Pending Sync
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-on-surface-variant font-mono truncate mt-0.5">
+                  {isSyncingQueue
+                    ? 'Syncing offline emergency queue...'
+                    : (pendingCount > 0 ? `${pendingCount} offline report(s) ready to sync` : 'Emergency packets send instantly to backend')}
+                </p>
               </div>
-              <p className="text-[10px] text-on-surface-variant font-medium mt-0.5 break-words">
-                Scanning for nearest P2P mesh relay node (Bluetooth / WebRTC architecture ready).
-              </p>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {pendingCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(true)}
+                  className="p-2 text-on-surface-variant hover:text-primary hover:bg-surface-container-high rounded-lg transition-colors flex items-center justify-center shrink-0 cursor-pointer min-h-[36px] min-w-[36px]"
+                  title="View Pending Reports"
+                  aria-label="View Pending Reports"
+                >
+                  <span className="material-symbols-outlined text-base">list_alt</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={syncLocalQueueToBackend}
+                className="p-2 text-on-surface-variant hover:text-primary hover:bg-surface-container-high rounded-lg transition-colors flex items-center justify-center shrink-0 cursor-pointer min-h-[36px] min-w-[36px]"
+                title="Retry Network Connection Now"
+                aria-label="Retry Network Connection"
+              >
+                <span className="material-symbols-outlined text-base">sync</span>
+              </button>
             </div>
           </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <span className="material-symbols-outlined text-lg text-amber-600 dark:text-amber-400 animate-pulse shrink-0">
+                wifi_off
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-xs text-amber-800 dark:text-amber-300 leading-tight">
+                    Offline Mode
+                  </span>
+                  <span className="text-[10px] font-bold uppercase bg-amber-500/15 text-amber-900 dark:text-amber-300 px-1.5 py-0.2 rounded border border-amber-400/50 whitespace-nowrap shrink-0">
+                    Mesh Active
+                  </span>
+                  {pendingCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(true)}
+                      className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 dark:text-amber-300 bg-amber-500/20 hover:bg-amber-500/30 px-2 py-0.5 rounded-full border border-amber-500/40 cursor-pointer transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-xs">sync_saved_locally</span>
+                      {pendingCount} Stored
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-on-surface-variant font-mono truncate mt-0.5">
+                  {pendingCount > 0 ? `${pendingCount} packet(s) stored locally • Retrying...` : 'Searching for nearest mesh relay node...'}
+                </p>
+              </div>
+            </div>
 
-          <p className="text-xs text-on-surface-variant leading-relaxed break-words">
-            Emergency packets will be stored locally ({queuedCount} packet(s) queued) and automatically transmitted when internet connectivity or a mesh relay is detected.
-          </p>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(true)}
+                className="p-2 text-on-surface-variant hover:text-primary hover:bg-surface-container-high rounded-lg transition-colors flex items-center justify-center shrink-0 cursor-pointer min-h-[36px] min-w-[36px]"
+                title="View Pending Reports"
+                aria-label="View Pending Reports"
+              >
+                <span className="material-symbols-outlined text-base">list_alt</span>
+              </button>
+              <button
+                type="button"
+                onClick={syncLocalQueueToBackend}
+                className="p-2 text-on-surface-variant hover:text-primary hover:bg-surface-container-high rounded-lg transition-colors flex items-center justify-center shrink-0 cursor-pointer min-h-[36px] min-w-[36px]"
+                title="Retry Network Connection Now"
+                aria-label="Retry Network Connection"
+              >
+                <span className="material-symbols-outlined text-base">sync</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
-          <button
-            type="button"
-            onClick={syncLocalQueueToBackend}
-            className="text-xs font-bold text-amber-900 hover:text-amber-700 flex items-center gap-1 cursor-pointer min-h-[36px]"
-          >
-            <span className="material-symbols-outlined text-sm">sync</span>
-            Retry Network Connection Now
-          </button>
-        </div>
-      )}
-    </div>
+      <OfflineSyncStatusModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+    </>
   );
 }

@@ -1,14 +1,16 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { SettingsProvider } from './contexts/SettingsContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { LanguageProvider } from './contexts/LanguageContext';
 import ErrorBoundary from './components/feedback/ErrorBoundary';
 import ProtectedRoute from './components/navigation/ProtectedRoute';
 import RoleGuard from './components/navigation/RoleGuard';
 import ResponderLayout from './layouts/ResponderLayout';
 import { RESPONDER_ROUTES } from './constants/routes';
 
-// Placeholder Pages
+// Lazy-Loaded Pages
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const IncidentsPage = lazy(() => import('./pages/IncidentsPage'));
@@ -23,8 +25,10 @@ export default function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
-        <ThemeProvider>
-          <AuthProvider>
+        <SettingsProvider>
+          <LanguageProvider>
+            <ThemeProvider>
+              <AuthProvider>
             <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center text-xs font-bold text-primary">Loading Command Center...</div>}>
               <Routes>
                 {/* Public Auth Route */}
@@ -55,7 +59,9 @@ export default function App() {
             </Suspense>
           </AuthProvider>
         </ThemeProvider>
-      </BrowserRouter>
-    </ErrorBoundary>
+      </LanguageProvider>
+    </SettingsProvider>
+  </BrowserRouter>
+</ErrorBoundary>
   );
 }

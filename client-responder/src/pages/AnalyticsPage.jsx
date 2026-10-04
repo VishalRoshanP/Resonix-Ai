@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import { incidentApi } from '../services/api';
@@ -9,18 +9,33 @@ export default function AnalyticsPage() {
   const [timeRange, setTimeRange] = useState('7d');
   const [toastMsg, setToastMsg] = useState('');
 
+  const isMountedRef = useRef(true);
+  const activeControllerRef = useRef(null);
+
   useEffect(() => {
-    fetchRealAnalytics();
+    isMountedRef.current = true;
+    fetchRealAnalytics(false);
     const interval = setInterval(() => {
       fetchRealAnalytics(true);
-    }, 5000);
-    return () => clearInterval(interval);
+    }, 30000);
+    return () => {
+      isMountedRef.current = false;
+      if (activeControllerRef.current) activeControllerRef.current.abort();
+      clearInterval(interval);
+    };
   }, []);
 
   const fetchRealAnalytics = async (isBackground = false) => {
-    if (!isBackground) setIsLoading(true);
+    if (!isBackground && isMountedRef.current) setIsLoading(true);
+    if (activeControllerRef.current) {
+      activeControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    activeControllerRef.current = controller;
+
     try {
-      const res = await incidentApi.getIncidents();
+      const res = await incidentApi.getIncidents({ signal: controller.signal });
+      if (!isMountedRef.current) return;
       const rawList = Array.isArray(res)
         ? res
         : Array.isArray(res?.data)
@@ -28,10 +43,13 @@ export default function AnalyticsPage() {
         : res?.data?.incidents || res?.data?.data || [];
       setIncidents(rawList);
     } catch (err) {
+      if (err.name === 'AbortError' || err.message?.includes('aborted')) return;
       console.warn('[AnalyticsPage] Failed to fetch analytics data:', err.message);
-      setIncidents([]);
+      if (isMountedRef.current) setIncidents([]);
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current && !isBackground) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -143,7 +161,10 @@ export default function AnalyticsPage() {
             Disaster Category Distribution (Real DB)
           </h2>
           {isLoading ? (
-            <p className="text-xs font-mono font-bold text-secondary text-center py-6">Loading analytics...</p>
+            <div className="flex flex-col items-center justify-center gap-2 py-8">
+              <div className="w-5 h-5 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
+              <p className="text-xs font-mono font-bold text-secondary">Loading analytics from MongoDB...</p>
+            </div>
           ) : categoryStats.length === 0 ? (
             <p className="text-xs text-on-surface-variant text-center py-6">No emergency incidents recorded in database.</p>
           ) : (
@@ -168,7 +189,10 @@ export default function AnalyticsPage() {
             Priority & Severity Triage (Real DB)
           </h2>
           {isLoading ? (
-            <p className="text-xs font-mono font-bold text-secondary text-center py-6">Loading analytics...</p>
+            <div className="flex flex-col items-center justify-center gap-2 py-8">
+              <div className="w-5 h-5 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
+              <p className="text-xs font-mono font-bold text-secondary">Loading analytics from MongoDB...</p>
+            </div>
           ) : priorityStats.length === 0 ? (
             <p className="text-xs text-on-surface-variant text-center py-6">No priority data recorded.</p>
           ) : (

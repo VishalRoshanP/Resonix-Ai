@@ -10,58 +10,6 @@ export default function UsersPage() {
   const [filterStatus, setFilterStatus] = useState('ALL'); // 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'
   const [actionSuccessMsg, setActionSuccessMsg] = useState('');
 
-  // Pre-seeded Demo Personnel Accounts
-  const seedUsers = [
-    {
-      id: 'usr_resp_101',
-      name: 'Officer Sarah Jenkins',
-      email: 'responder@resonix.gov',
-      badgeId: 'NDRF-FL-101',
-      organization: 'National Disaster Response Force',
-      department: 'Water Extraction Squad #4',
-      role: 'Responder',
-      approvalStatus: 'APPROVED',
-      isActive: true,
-      createdAt: '2026-07-28T10:00:00Z',
-    },
-    {
-      id: 'usr_coord_202',
-      name: 'Captain Marcus Vance',
-      email: 'coordinator@resonix.gov',
-      badgeId: 'NDMA-COORD-202',
-      organization: 'National Disaster Management Authority',
-      department: 'Command Logistics & Dispatch',
-      role: 'Coordinator',
-      approvalStatus: 'APPROVED',
-      isActive: true,
-      createdAt: '2026-07-29T11:30:00Z',
-    },
-    {
-      id: 'usr_admin_303',
-      name: 'Commander Robert Sterling',
-      email: 'admin@resonix.gov',
-      badgeId: 'RESONIX-ADM-303',
-      organization: 'RESONIX Emergency Command',
-      department: 'Executive Operations Control',
-      role: 'Administrator',
-      approvalStatus: 'APPROVED',
-      isActive: true,
-      createdAt: '2026-07-30T08:15:00Z',
-    },
-    {
-      id: 'usr_pending_909',
-      name: 'Lt. David Miller',
-      email: 'david.miller@fire.gov',
-      badgeId: 'FIRE-NY-404',
-      organization: 'Fire Rescue Service',
-      department: 'Heavy Structural Containment',
-      role: 'Responder',
-      approvalStatus: 'PENDING_APPROVAL',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-    },
-  ];
-
   // Fetch Personnel List from Backend API
   const fetchUsers = async () => {
     setIsLoading(true);
@@ -73,12 +21,12 @@ export default function UsersPage() {
         ? res.data.users
         : Array.isArray(res?.users)
         ? res.users
-        : seedUsers;
+        : [];
 
-      setUsers(rawList.length > 0 ? rawList : seedUsers);
+      setUsers(rawList);
     } catch (err) {
-      console.warn('[UsersPage] API fetch fallback to seed accounts:', err.message);
-      setUsers(seedUsers);
+      console.warn('[UsersPage] API fetch returned no user accounts:', err.message);
+      setUsers([]);
     } finally {
       setIsLoading(false);
     }
@@ -244,7 +192,10 @@ export default function UsersPage() {
               {isLoading ? (
                 <tr>
                   <td colSpan="7" className="p-8 text-center text-secondary font-mono font-bold">
-                    Loading personnel directory...
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <div className="w-5 h-5 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
+                      <span>Loading personnel directory...</span>
+                    </div>
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
@@ -264,11 +215,11 @@ export default function UsersPage() {
                         <span className="text-[10px] text-on-surface-variant font-mono">{u.email}</span>
                       </td>
 
-                      <td className="p-3.5 font-mono font-bold text-secondary">{u.badgeId || 'BDG-9999'}</td>
+                      <td className="p-3.5 font-mono font-bold text-secondary">{u.badgeId || 'N/A'}</td>
 
                       <td className="p-3.5">
-                        <span className="font-medium text-primary block">{u.organization || 'Disaster Force'}</span>
-                        <span className="text-[10px] text-on-surface-variant">{u.department || 'Operations'}</span>
+                        <span className="font-medium text-primary block">{u.organization || 'Unspecified'}</span>
+                        <span className="text-[10px] text-on-surface-variant">{u.department || 'General'}</span>
                       </td>
 
                       <td className="p-3.5">

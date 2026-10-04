@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { resolveConfiguredApiBaseUrl } from '../utils/env';
 
 export const RECORDING_STATUS = {
   IDLE: 'IDLE',
@@ -8,6 +9,51 @@ export const RECORDING_STATUS = {
   RECORDED: 'RECORDED',
   ERROR: 'ERROR',
 };
+
+export const LANGUAGE_LOCALE_MAP = {
+  Tamil: 'ta-IN',
+  Hindi: 'hi-IN',
+  Telugu: 'te-IN',
+  Kannada: 'kn-IN',
+  Malayalam: 'ml-IN',
+  Bengali: 'bn-IN',
+  Marathi: 'mr-IN',
+  Gujarati: 'gu-IN',
+  Punjabi: 'pa-IN',
+  English: 'en-IN',
+  ta: 'ta-IN',
+  hi: 'hi-IN',
+  te: 'te-IN',
+  kn: 'kn-IN',
+  ml: 'ml-IN',
+  bn: 'bn-IN',
+  mr: 'mr-IN',
+  gu: 'gu-IN',
+  pa: 'pa-IN',
+  en: 'en-IN',
+  'ta-IN': 'ta-IN',
+  'hi-IN': 'hi-IN',
+  'te-IN': 'te-IN',
+  'kn-IN': 'kn-IN',
+  'ml-IN': 'ml-IN',
+  'bn-IN': 'bn-IN',
+  'mr-IN': 'mr-IN',
+  'gu-IN': 'gu-IN',
+  'pa-IN': 'pa-IN',
+  'en-IN': 'en-IN',
+  'en-US': 'en-IN',
+};
+
+/**
+ * Deduplicates consecutive repeated words or sentences from STT streams.
+ */
+export function cleanDuplicateSpeechText(text) {
+  if (!text || typeof text !== 'string') return '';
+  let cleaned = text.trim().replace(/\s+/g, ' ');
+  cleaned = cleaned.replace(/\b(\w+)(\s+\1)+\b/gi, '$1');
+  cleaned = cleaned.replace(/(.+?)\s+\1(?=\s|$)/gi, '$1');
+  return cleaned.trim();
+}
 
 export function useVoiceRecorder() {
   const [status, setStatus] = useState(RECORDING_STATUS.IDLE);
@@ -20,10 +66,29 @@ export function useVoiceRecorder() {
   const [backendResponse, setBackendResponse] = useState(null);
 
   const recognitionRef = useRef(null);
+  const finalTranscriptRef = useRef('');
   const mediaStreamRef = useRef(null);
   const mediaRecorderRef = useRef(null);
+  const mediaRecorderActiveRef = useRef(false);
   const audioChunksRef = useRef([]);
   const timerIntervalRef = useRef(null);
+  const reRecordTimeoutRef = useRef(null);
+  const selectedLangRef = useRef(selectedLang);
+  const transcriptRef = useRef(transcript);
+  const audioBlobRef = useRef(audioBlob);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    selectedLangRef.current = selectedLang;
+  }, [selectedLang]);
+
+  useEffect(() => {
+    transcriptRef.current = transcript;
+  }, [transcript]);
+
+  useEffect(() => {
+    audioBlobRef.current = audioBlob;
+  }, [audioBlob]);
 
   const clearTimer = useCallback(() => {
     if (timerIntervalRef.current) {
@@ -38,6 +103,18 @@ export function useVoiceRecorder() {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       } catch (_) {}
       mediaStreamRef.current = null;
+    }
+  }, []);
+
+  const stopRecognition = useCallback(() => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.onend = null;
+        recognitionRef.current.stop();
+      } catch (_) {}
+      recognitionRef.current = null;
     }
   }, []);
 
@@ -58,100 +135,153 @@ export function useVoiceRecorder() {
     return '';
   }, []);
 
-  /**
- * Deduplicates consecutive repeated words or sentences from STT streams.
- * e.g., "I need need help help" -> "I need help"
- * e.g., "The building is on fire. The building is on fire." -> "The building is on fire."
- */
-export function cleanDuplicateSpeechText(text) {
-  if (!text || typeof text !== 'string') return '';
-  let cleaned = text.trim().replace(/\s+/g, ' ');
-
-  // 1. Remove consecutive duplicated words (case-insensitive)
-  cleaned = cleaned.replace(/\b(\w+)(\s+\1)+\b/gi, '$1');
-
-  // 2. Remove consecutive duplicated phrases or sentences
-  cleaned = cleaned.replace(/(.+?)\s+\1(?=\s|$)/gi, '$1');
-
-  return cleaned.trim();
-}
-
-// Start Speech-to-Text Recognition Helper
-  const startSpeechRecognition = useCallback((langCode) => {
-    if (typeof window === 'undefined') return;
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (SpeechRecognition) {
-      try {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        
-        // Resolve BCP47 language tag without hardcoding en-US or relying on navigator.language
-        const targetCode = langCode || selectedLang || 'AUTO';
-        let resolvedLang = 'ta-IN';
-        if (targetCode !== 'AUTO') {
-          resolvedLang = targetCode;
-        }
-
-        recognition.lang = resolvedLang;
-
-        let finalTranscript = '';
-        recognition.onresult = (event) => {
-          let interimTranscript = '';
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const res = event.results[i];
-            const text = res[0]?.transcript || '';
-            if (res.isFinal) {
-              finalTranscript += text + ' ';
-            } else {
-              interimTranscript += text;
-            }
-          }
-          const fullText = (finalTranscript + ' ' + interimTranscript).trim();
-          const cleanText = cleanDuplicateSpeechText(fullText);
-          setTranscript(cleanText);
-        };
-
-        recognition.onerror = (e) => {
-          console.warn('[useVoiceRecorder] Web Speech STT error:', e.error);
-        };
-
-        recognition.start();
-        recognitionRef.current = recognition;
-      } catch (err) {
-        console.warn('[useVoiceRecorder] Web Speech API initialization failed:', err.message);
+  // Production Speech-to-Text via Backend ASR (Fallback if Web Speech API returns empty)
+  const transcribeRecordedBlob = useCallback(async (blob, mimeType, duration) => {
+    if (!blob || blob.size === 0) return;
+    try {
+      if (isMountedRef.current) {
+        setStatus(RECORDING_STATUS.PROCESSING);
       }
-    } else {
-      // Fallback transcript simulation for browsers without Web Speech API
-      setTranscript('Emergency reported via voice telemetry. Water levels rising near dwelling.');
-    }
-  }, [selectedLang]);
 
-  // Stop Speech Recognition Helper
-  const stopSpeechRecognition = useCallback(() => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (_) {}
-      recognitionRef.current = null;
+      const reader = new FileReader();
+      const base64Audio = await new Promise((resolve, reject) => {
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      const apiBaseUrl = resolveConfiguredApiBaseUrl();
+
+      const resp = await fetch(`${apiBaseUrl}/emergency/transcribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          audioData: base64Audio,
+          mimeType,
+          durationSeconds: duration,
+        }),
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.success === false) {
+          // Backend transcription failed but not a network error; keep audio available
+          console.warn('[useVoiceRecorder] Backend STT returned failure:', data.error || data.message);
+          if (isMountedRef.current) {
+            setStatus(RECORDING_STATUS.RECORDED);
+          }
+          return;
+        }
+        const officialTranscript = (data.nativeScriptTranscript || data.originalTranscript || data.transcript || '').trim();
+        if (officialTranscript && isMountedRef.current) {
+          transcriptRef.current = officialTranscript;
+          setTranscript(officialTranscript);
+          if (data.language && data.language !== 'Unknown') {
+            setSelectedLang(data.language);
+          }
+          // Store complete backend transcription response
+          setBackendResponse({
+            originalTranscript: officialTranscript,
+            nativeScriptTranscript: data.nativeScriptTranscript || null,
+            englishTranslation: data.englishTranslation || null,
+            normalizedMeaning: data.normalizedMeaning || null,
+            language: data.language || data.sourceLanguage || 'Unknown',
+            languageCode: data.languageCode || data.sourceLanguageCode || 'unknown',
+            sourceLanguage: data.sourceLanguage || data.language || 'Unknown',
+            confidence: data.confidence || 0,
+            needsReview: Boolean(data.needsReview),
+            transcriptionProvider: data.transcriptionProvider || null,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[useVoiceRecorder] Backend STT notice:', err.message);
+    } finally {
+      // Always transition to RECORDED after backend STT completes or fails
+      if (isMountedRef.current) {
+        setStatus(RECORDING_STATUS.RECORDED);
+      }
     }
   }, []);
 
-  // Start Recording with Noise Cancellation Constraints
-  const startRecording = useCallback(async (langCode = selectedLang) => {
+  // Start Recording with Web Speech API and MediaRecorder
+  const startRecording = useCallback(async (langCode) => {
     setErrorMessage(null);
     setBackendResponse(null);
     setTranscript('');
+    transcriptRef.current = '';
+    finalTranscriptRef.current = '';
     setStatus(RECORDING_STATUS.LISTENING);
     audioChunksRef.current = [];
 
+    // Stop existing recognition if active
+    stopRecognition();
+
+    const targetLang = langCode || selectedLangRef.current || 'ta-IN';
+    const targetLocale = LANGUAGE_LOCALE_MAP[targetLang] || LANGUAGE_LOCALE_MAP[selectedLangRef.current] || 'ta-IN';
+
+    // 1. Initialize Web Speech API
+    const SpeechRec = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+    if (SpeechRec) {
+      try {
+        const rec = new SpeechRec();
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.lang = targetLocale;
+        rec.maxAlternatives = 1;
+
+        rec.onresult = (event) => {
+          let interim = '';
+          let final = '';
+          for (let i = 0; i < event.results.length; i++) {
+            const item = event.results[i];
+            const text = item[0]?.transcript || '';
+            if (item.isFinal) {
+              final += text + ' ';
+            } else {
+              interim += text;
+            }
+          }
+          finalTranscriptRef.current = final.trim();
+          const currentText = (final + (interim ? ' ' + interim : '')).trim();
+          if (currentText && isMountedRef.current) {
+            transcriptRef.current = currentText;
+            setTranscript(currentText);
+          }
+        };
+
+        rec.onerror = (event) => {
+          console.warn('[useVoiceRecorder Web Speech API error]:', event.error);
+          if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+            // Permission errors affect both Web Speech API and MediaRecorder
+            if (isMountedRef.current) {
+              setErrorMessage('Microphone access permission was denied.');
+            }
+          } else if (event.error === 'no-speech') {
+            // Normal pause in speech, not a real error
+          } else if (event.error !== 'aborted') {
+            // Only show error if MediaRecorder is also not actively recording audio.
+            // Web Speech API can fail independently (network issues, unsupported locale, etc.)
+            // while MediaRecorder continues capturing audio for backend STT.
+            if (isMountedRef.current && !finalTranscriptRef.current && !mediaRecorderActiveRef.current) {
+              setErrorMessage('Voice could not be captured. You can try again or type your emergency.');
+            }
+          }
+        };
+
+        rec.start();
+        recognitionRef.current = rec;
+      } catch (recErr) {
+        console.warn('[useVoiceRecorder] SpeechRecognition start error:', recErr.message);
+      }
+    }
+
+    // 2. Initialize MediaRecorder Stream
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error('Microphone access is not supported on this browser.');
       }
 
-      // Noise Handling & Noise Suppression Constraints
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -165,6 +295,7 @@ export function cleanDuplicateSpeechText(text) {
       const recorderOptions = mimeType ? { mimeType } : undefined;
       const recorder = new MediaRecorder(stream, recorderOptions);
       mediaRecorderRef.current = recorder;
+      mediaRecorderActiveRef.current = true;
 
       recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
@@ -172,55 +303,71 @@ export function cleanDuplicateSpeechText(text) {
         }
       };
 
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
+        mediaRecorderActiveRef.current = false;
         clearTimer();
         stopStream();
-        stopSpeechRecognition();
+        stopRecognition();
 
         const actualMimeType = recorder.mimeType || mimeType || 'audio/webm';
         const blob = new Blob(audioChunksRef.current, { type: actualMimeType });
 
         if (blob.size > 0) {
           const url = URL.createObjectURL(blob);
-          setAudioBlob(blob);
-          setAudioUrl(url);
-          setStatus(RECORDING_STATUS.RECORDED);
-        } else {
+          audioBlobRef.current = blob;
+          if (isMountedRef.current) {
+            setAudioBlob(blob);
+            setAudioUrl(url);
+          }
+          // If Web Speech API returned text, go directly to RECORDED.
+          // Otherwise, keep PROCESSING and invoke backend STT.
+          if (finalTranscriptRef.current) {
+            if (isMountedRef.current) {
+              setStatus(RECORDING_STATUS.RECORDED);
+            }
+          } else {
+            // Backend STT handles its own PROCESSING → RECORDED transition
+            await transcribeRecordedBlob(blob, actualMimeType, 5);
+          }
+        } else if (isMountedRef.current) {
           setStatus(RECORDING_STATUS.IDLE);
         }
       };
 
       recorder.start(250);
-      startSpeechRecognition(langCode);
 
       setStatus(RECORDING_STATUS.RECORDING);
       setRecordingTime(0);
 
       timerIntervalRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
+        if (isMountedRef.current) {
+          setRecordingTime((prev) => prev + 1);
+        }
       }, 1000);
     } catch (err) {
       stopStream();
+      stopRecognition();
       clearTimer();
-      stopSpeechRecognition();
-      setErrorMessage(err.message || 'Failed to access microphone.');
-      setStatus(RECORDING_STATUS.ERROR);
+      if (isMountedRef.current) {
+        setErrorMessage(err.message || 'Failed to access microphone.');
+        setStatus(RECORDING_STATUS.ERROR);
+      }
     }
-  }, [selectedLang, startSpeechRecognition, stopSpeechRecognition]);
+  }, [clearTimer, getSupportedMimeType, stopStream, stopRecognition, transcribeRecordedBlob]);
 
   // Stop Recording
   const stopRecording = useCallback(() => {
-    stopSpeechRecognition();
+    stopRecognition();
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       setStatus(RECORDING_STATUS.PROCESSING);
       mediaRecorderRef.current.stop();
     }
-  }, [stopSpeechRecognition]);
+  }, [stopRecognition]);
 
   // Cancel Recording
   const cancelRecording = useCallback(() => {
     clearTimer();
-    stopSpeechRecognition();
+    stopRecognition();
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
@@ -230,6 +377,9 @@ export function cleanDuplicateSpeechText(text) {
       URL.revokeObjectURL(audioUrl);
     }
 
+    audioBlobRef.current = null;
+    transcriptRef.current = '';
+    finalTranscriptRef.current = '';
     setAudioBlob(null);
     setAudioUrl(null);
     setTranscript('');
@@ -237,72 +387,83 @@ export function cleanDuplicateSpeechText(text) {
     setErrorMessage(null);
     setBackendResponse(null);
     setStatus(RECORDING_STATUS.IDLE);
-  }, [audioUrl, stopSpeechRecognition]);
+  }, [audioUrl, clearTimer, stopStream, stopRecognition]);
 
   // Re-record
   const reRecord = useCallback(async () => {
     cancelRecording();
-    setTimeout(() => {
+    if (reRecordTimeoutRef.current) clearTimeout(reRecordTimeoutRef.current);
+    reRecordTimeoutRef.current = setTimeout(() => {
       startRecording();
     }, 100);
   }, [cancelRecording, startRecording]);
 
   // Send Recorded Audio & Transcript to Backend API
   const sendToBackend = useCallback(async (category = 'VOICE_EMERGENCY') => {
-    if (!audioBlob && !transcript) return null;
+    const currentBlob = audioBlobRef.current || audioBlob;
+    const currentTranscript = (finalTranscriptRef.current || transcriptRef.current || transcript || '').trim();
+    if (!currentBlob && !currentTranscript) return null;
 
     try {
       setStatus(RECORDING_STATUS.PROCESSING);
 
       let base64Data = null;
-      if (audioBlob) {
+      if (currentBlob) {
         const reader = new FileReader();
         const base64Promise = new Promise((resolve, reject) => {
           reader.onloadend = () => resolve(reader.result);
           reader.onerror = reject;
         });
-        reader.readAsDataURL(audioBlob);
+        reader.readAsDataURL(currentBlob);
         base64Data = await base64Promise;
       }
 
+      const activeLang = selectedLangRef.current || selectedLang;
       const payload = {
         category,
-        description: transcript || 'Emergency voice audio telemetry captured.',
+        citizenSelectedCategory: category,
+        selectedCategory: category,
+        description: currentTranscript || 'Emergency voice audio telemetry captured.',
         audioData: base64Data,
-        mimeType: audioBlob?.type || 'audio/webm',
-        detectedLanguage: selectedLang,
-        transcript: transcript || 'Voice telemetry recorded.',
-        gemmaEnvelope: {
-          primaryModel: 'google/gemma-4-e4b-it',
-          queuedForInference: true,
-          pipelineStage: 'VOICE_TRANSCRIPTION_TRIAGE',
-          extractedTranscript: transcript || 'Emergency voice audio telemetry captured.',
-        },
+        mimeType: currentBlob?.type || 'audio/webm',
+        detectedLanguage: activeLang !== 'AUTO' ? activeLang : 'Language not detected',
+        transcript: currentTranscript || '',
+        originalTranscript: currentTranscript || '',
+        voiceTranscript: currentTranscript || '',
       };
 
       const { citizenApi } = await import('../services/api');
       const json = await citizenApi.sendSOS(payload);
-      setBackendResponse(json.data || json);
-      setStatus(RECORDING_STATUS.RECORDED);
+      if (isMountedRef.current) {
+        setBackendResponse(json.data || json);
+        setStatus(RECORDING_STATUS.RECORDED);
+      }
       return json;
     } catch (err) {
-      setErrorMessage('Failed to send voice payload to server: ' + err.message);
-      setStatus(RECORDING_STATUS.ERROR);
+      if (isMountedRef.current) {
+        setErrorMessage('Failed to send voice payload to server: ' + err.message);
+        setStatus(RECORDING_STATUS.ERROR);
+      }
       return null;
     }
   }, [audioBlob, transcript, selectedLang]);
 
-  // Clean up object URLs on unmount
+  // Clean up on unmount
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       clearTimer();
+      stopRecognition();
       stopStream();
-      stopSpeechRecognition();
+      if (reRecordTimeoutRef.current) {
+        clearTimeout(reRecordTimeoutRef.current);
+      }
       if (audioUrl) {
         URL.revokeObjectURL(audioUrl);
       }
     };
-  }, [audioUrl, stopSpeechRecognition]);
+  }, [audioUrl, clearTimer, stopStream, stopRecognition]);
 
   // Formatter for MM:SS
   const formatTime = (seconds) => {
@@ -326,6 +487,7 @@ export function cleanDuplicateSpeechText(text) {
     startRecording,
     stopRecording,
     cancelRecording,
+    deleteRecording: cancelRecording,
     reRecord,
     sendToBackend,
     isIdle: status === RECORDING_STATUS.IDLE,

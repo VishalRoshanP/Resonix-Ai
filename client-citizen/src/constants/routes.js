@@ -1,13 +1,14 @@
 // Route path constants — Single source of truth for Citizen Application
 export const ROUTES = {
-  // Portal Landing Entry
-  LANDING: '/',
+  // Portal Landing Entry (Redirects directly to Citizen Home)
+  LANDING: '/citizen/home',
 
   // Citizen Application Core Routes
   CITIZEN_ROOT: '/citizen',
   CITIZEN_LOGIN: '/citizen/login',
   CITIZEN_REGISTER: '/citizen/register',
   CITIZEN_HOME: '/citizen/home',
+  CITIZEN_SOS: '/citizen/sos',
   CITIZEN_PROFILE: '/citizen/profile',
   CITIZEN_SETTINGS: '/citizen/settings',
   CITIZEN_STATUS: '/citizen/status',
@@ -20,7 +21,7 @@ export const ROUTES = {
   PROFILE: '/citizen/profile',
   SETTINGS: '/citizen/settings',
   STATUS: '/citizen/status',
-  SOS: '/sos',
+  SOS: '/citizen/sos',
   VOICE_RELAY: '/voice-relay',
   EMERGENCY_GUIDE: '/emergency-guide',
   LANGUAGE_SELECTION: '/language-selection',

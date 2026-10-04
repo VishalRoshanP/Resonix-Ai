@@ -21,29 +21,6 @@ const getRelayNodes = async (req, res, next) => {
       } catch (_) {}
     }
 
-    nodes = [
-      {
-        id: 'rly_001',
-        nodeId: 'NODE-ALPHA-1',
-        status: 'active',
-        batteryLevel: 94,
-        connectedPeers: 6,
-        signalStrength: -65,
-        location: { lat: 37.7749, lng: -122.4194 },
-        lastPing: new Date().toISOString(),
-      },
-      {
-        id: 'rly_002',
-        nodeId: 'NODE-BETA-2',
-        status: 'degraded',
-        batteryLevel: 32,
-        connectedPeers: 3,
-        signalStrength: -82,
-        location: { lat: 37.7833, lng: -122.4167 },
-        lastPing: new Date().toISOString(),
-      },
-    ];
-
     return ApiResponse.success(res, 200, 'Relay nodes retrieved successfully', { nodes });
   } catch (error) {
     next(error);
@@ -57,23 +34,18 @@ const getRelayNodes = async (req, res, next) => {
  */
 const getRelayNodeById = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    if (id === 'notfound') {
-      return next(new ApiError(404, `Relay node '${id}' not found`));
+    if (RelayNode?.db?.readyState === 1) {
+      try {
+        const node = await RelayNode.findOne({
+          $or: [{ nodeId: id }, { id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }],
+        });
+        if (node) {
+          return ApiResponse.success(res, 200, 'Relay node details retrieved', { node: node.toObject() });
+        }
+      } catch (_) {}
     }
 
-    return ApiResponse.success(res, 200, 'Relay node details retrieved', {
-      node: {
-        id,
-        nodeId: 'NODE-ALPHA-1',
-        status: 'active',
-        batteryLevel: 94,
-        connectedPeers: 6,
-        signalStrength: -65,
-        location: { lat: 37.7749, lng: -122.4194 },
-        lastPing: new Date().toISOString(),
-      },
-    });
+    return next(new ApiError(404, `Relay node '${id}' not found`));
   } catch (error) {
     next(error);
   }
@@ -187,27 +159,7 @@ const getRelayAnalytics = async (req, res, next) => {
       } catch (_) {}
     }
 
-    if (analyticsList.length === 0) {
-      analyticsList = [
-        {
-          packetId: 'pkt_relay_demo_001',
-          originDevice: 'dev_device_A',
-          originUser: 'usr_citizen_sector4',
-          relayCount: 3,
-          relayHistory: [
-            { relayNodeId: 'dev_device_B', relayedAt: new Date(Date.now() - 24000).toISOString(), rssi: -62 },
-            { relayNodeId: 'dev_device_C', relayedAt: new Date(Date.now() - 16000).toISOString(), rssi: -71 },
-            { relayNodeId: 'dev_device_D', relayedAt: new Date(Date.now() - 8000).toISOString(), rssi: -68 },
-          ],
-          totalDeliveryTimeMs: 24500,
-          finalUploadDevice: 'dev_device_D',
-          relayPath: ['dev_device_A', 'dev_device_B', 'dev_device_C', 'dev_device_D', 'Server'],
-          deliveryStatus: 'DELIVERED',
-          timestamp: new Date(Date.now() - 25000).toISOString(),
-          gpsCoordinates: { latitude: 12.9716, longitude: 77.5946, status: 'GPS_AVAILABLE' },
-        },
-      ];
-    }
+
 
     return ApiResponse.success(res, 200, 'Relay analytics telemetry retrieved successfully', {
       analytics: analyticsList,
@@ -265,25 +217,7 @@ const getRelayAnalyticsById = async (req, res, next) => {
       } catch (_) {}
     }
 
-    return ApiResponse.success(res, 200, `Relay analytics for '${id}' retrieved successfully`, {
-      analytics: {
-        packetId: id,
-        originDevice: 'dev_device_A',
-        originUser: 'usr_citizen_404',
-        relayCount: 3,
-        relayHistory: [
-          { relayNodeId: 'dev_device_B', relayedAt: new Date(Date.now() - 24000).toISOString(), rssi: -62 },
-          { relayNodeId: 'dev_device_C', relayedAt: new Date(Date.now() - 16000).toISOString(), rssi: -71 },
-          { relayNodeId: 'dev_device_D', relayedAt: new Date(Date.now() - 8000).toISOString(), rssi: -68 },
-        ],
-        totalDeliveryTimeMs: 24500,
-        finalUploadDevice: 'dev_device_D',
-        relayPath: ['dev_device_A', 'dev_device_B', 'dev_device_C', 'dev_device_D', 'Server'],
-        deliveryStatus: 'DELIVERED',
-        timestamp: new Date().toISOString(),
-        gpsCoordinates: { latitude: 12.9716, longitude: 77.5946, status: 'GPS_AVAILABLE' },
-      },
-    });
+    return next(new ApiError(404, `Relay analytics for packet '${id}' not found`));
   } catch (error) {
     next(error);
   }

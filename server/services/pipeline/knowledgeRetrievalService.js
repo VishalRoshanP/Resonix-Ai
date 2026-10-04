@@ -10,12 +10,13 @@
  */
 
 const knowledgeEmbeddingService = require('./knowledgeEmbeddingService');
+const pineconeService = require('../pinecone/pineconeService');
 const logger = require('../../utils/logger');
 
 class KnowledgeRetrievalService {
   constructor() {
     this.defaultTopK = 3;
-    this.minSimilarityThreshold = 0.15;
+    this.minSimilarityThreshold = 0.35; // Strict relevance threshold
     this.dedupSimilarityCutoff = 0.85; // Chunks with >= 85% mutual similarity are deduplicated
     this.mmrLambda = 0.75; // 0.75 weight on query relevance, 0.25 on diversity
 
@@ -30,19 +31,22 @@ class KnowledgeRetrievalService {
       duplicatesRemoved: 0,
       avgRetrievalLatencyMs: 0,
       rrfReranksExecuted: 0,
+      noContextCount: 0,
     };
   }
 
   /**
-   * Main Optimized Retrieval Workflow
+   * Main Semantic Knowledge Retrieval Workflow via Pinecone & Dense Embeddings
    */
-  retrieveRelevantKnowledge(incidentPayload = {}, topK = this.defaultTopK) {
+  async retrieveRelevantKnowledge(incidentPayload = {}, topK = this.defaultTopK) {
     const startTime = Date.now();
     this.optimizationStats.totalQueriesProcessed++;
 
     // 1. Extract and sanitize query text
     const queryText = (
       incidentPayload.processedTranscript ||
+      incidentPayload.normalizedTranscript ||
+      incidentPayload.voiceTranscript ||
       incidentPayload.text ||
       incidentPayload.combinedText ||
       incidentPayload.description ||
@@ -65,42 +69,118 @@ class KnowledgeRetrievalService {
     }
 
     this.optimizationStats.cacheMisses++;
-    logger.info(`[KnowledgeRetrieval] Executing hybrid RRF retrieval & MMR reranking for query: "${queryText.substring(0, 50)}..."`);
+    logger.info(`[KnowledgeRetrieval] Generating 384-dim embedding & querying Pinecone Cloud for: "${queryText.substring(0, 50)}..."`);
 
-    // 3. Perform Hybrid Dense Vector Search
+    // 3. Generate 384-dimensional dense semantic query embedding
+    const queryVector = knowledgeEmbeddingService.generateEmbedding(queryText);
+
+    // 4. Perform Pinecone Vector Search with Metadata Filter
     const searchFilter = {};
-    if (category && category !== 'GENERAL' && category !== 'OTHER') {
+    const hasVoiceEvidence = Boolean(
+      incidentPayload.processedTranscript ||
+      incidentPayload.voiceTranscript ||
+      incidentPayload.rawTranscript ||
+      incidentPayload.transcript
+    );
+    // Only constrain search to category if strictly requested for category SOP lookup, never for voice triage
+    if (!hasVoiceEvidence && incidentPayload.strictCategoryFilter && category && category !== 'GENERAL' && category !== 'OTHER') {
       searchFilter.disasterType = category;
     }
 
-    let candidateResults = knowledgeEmbeddingService.search(queryText, topK * 3, searchFilter);
+    // Query Pinecone vector index via Cloud (with local fallback if unconfigured or error)
+    const cloudQueryResult = await pineconeService.queryVectors({
+      vector: queryVector,
+      topK: topK * 3,
+      filter: searchFilter,
+      minScore: this.minSimilarityThreshold,
+    });
 
-    // Fallback: search across all categories if filtered candidate count is low
-    if (candidateResults.length < topK * 2) {
-      const globalCandidates = knowledgeEmbeddingService.search(queryText, topK * 3);
-      const existingIds = new Set(candidateResults.map((r) => r.chunkId));
+    let pineconeQueryResult = Array.isArray(cloudQueryResult?.matches) ? [...cloudQueryResult.matches] : [];
+    const providerName = cloudQueryResult?.source === 'PINECONE_CLOUD' ? 'Pinecone Cloud' : 'Local Vector Engine';
+
+    // Fallback: search across all categories ONLY if initial candidate count is 0
+    if (pineconeQueryResult.length === 0) {
+      const globalCloudResult = await pineconeService.queryVectors({
+        vector: queryVector,
+        topK: topK * 3,
+        minScore: this.minSimilarityThreshold,
+      });
+      const globalCandidates = Array.isArray(globalCloudResult?.matches) ? globalCloudResult.matches : [];
+      const existingIds = new Set(pineconeQueryResult.map((r) => r.chunkId));
       for (const res of globalCandidates) {
         if (!existingIds.has(res.chunkId)) {
-          candidateResults.push(res);
+          pineconeQueryResult.push(res);
           existingIds.add(res.chunkId);
         }
       }
     }
 
-    // 4. Hybrid Reciprocal Rank Fusion (RRF) & Sparse Keyword Rescoring
-    const rrfScoredCandidates = this._applyRrfHybridScoring(queryText, candidateResults);
+    // Diagnostic logging per Step 9 Requirements
+    logger.info(`[RAG] Embedding dimension: ${queryVector.length}`);
+    logger.info(`[RAG] Provider: ${providerName}`);
+    logger.info(`[RAG] Retrieved chunks: ${pineconeQueryResult.length}`);
+    logger.info(`[RAG] Top similarity: ${pineconeQueryResult.length > 0 ? pineconeQueryResult[0].score : 'N/A'}`);
+
+    // 5. Handle NO CONTEXT CASE (Zero Fabrication Rule)
+    if (!pineconeQueryResult || pineconeQueryResult.length === 0) {
+      this.optimizationStats.noContextCount++;
+      logger.info(`[KnowledgeRetrieval] No context matched threshold (${this.minSimilarityThreshold}) for query: "${queryText.substring(0, 40)}"`);
+
+      const noContextResult = {
+        queryText,
+        contextAvailable: false,
+        retrievedChunks: [],
+        similarityScores: [],
+        sourceDocuments: [],
+        ragContextFormatted: '[OFFICIAL DISASTER GUIDANCE & PROTOCOLS (RAG CONTEXT): External disaster knowledge context was unavailable for this incident. Rely strictly on verified general emergency response protocols and citizen report facts.]',
+        retrievalLatencyMs: Date.now() - startTime,
+        retrievalEngine: 'PINECONE_VECTOR_SEARCH',
+        isCacheHit: false,
+        message: 'External disaster knowledge context was unavailable for this incident.',
+        timestamp: new Date().toISOString(),
+      };
+
+      this.queryCache.set(cacheKey, noContextResult);
+      return noContextResult;
+    }
+
+    // 6. Hybrid Reciprocal Rank Fusion (RRF) & Sparse Keyword Rescoring
+    const rrfScoredCandidates = this._applyRrfHybridScoring(queryText, pineconeQueryResult, category);
     this.optimizationStats.rrfReranksExecuted++;
 
-    // 5. Semantic Duplicate Removal & MMR Diversity Reranking
+    // 7. Semantic Duplicate Removal & MMR Diversity Reranking
     const { rankedResults, duplicatesRemoved } = this._applyMmrAndDeduplication(rrfScoredCandidates, topK);
     this.optimizationStats.duplicatesRemoved += duplicatesRemoved;
 
-    // 6. Format Final Response Components
+    // 8. Filter by minimum relevance after RRF/MMR
+    const verifiedResults = rankedResults.filter((r) => r.score >= this.minSimilarityThreshold);
+
+    if (verifiedResults.length === 0) {
+      this.optimizationStats.noContextCount++;
+      const noContextResult = {
+        queryText,
+        contextAvailable: false,
+        retrievedChunks: [],
+        similarityScores: [],
+        sourceDocuments: [],
+        ragContextFormatted: '[OFFICIAL DISASTER GUIDANCE & PROTOCOLS (RAG CONTEXT): External disaster knowledge context was unavailable for this incident. Rely strictly on verified general emergency response protocols and citizen report facts.]',
+        retrievalLatencyMs: Date.now() - startTime,
+        retrievalEngine: 'PINECONE_VECTOR_SEARCH',
+        isCacheHit: false,
+        message: 'External disaster knowledge context was unavailable for this incident.',
+        timestamp: new Date().toISOString(),
+      };
+
+      this.queryCache.set(cacheKey, noContextResult);
+      return noContextResult;
+    }
+
+    // 9. Format Final Response Components
     const retrievedChunks = [];
     const similarityScores = [];
     const sourceDocumentsMap = new Map();
 
-    for (const res of rankedResults) {
+    for (const res of verifiedResults) {
       const meta = res.metadata;
       const calibratedScore = this._calibrateRelevanceScore(res.score);
 
@@ -129,7 +209,8 @@ class KnowledgeRetrievalService {
           documentId: meta.sourceDocument,
           documentTitle: meta.documentTitle,
           disasterCategory: meta.disasterType,
-          version: meta.version,
+          version: meta.version || 'v1.0',
+          sourceUrl: meta.sourceUrl || `/knowledge/${(meta.disasterType || 'general').toLowerCase()}/${meta.sourceDocument}`,
         });
       }
     }
@@ -140,17 +221,20 @@ class KnowledgeRetrievalService {
 
     const result = {
       queryText,
+      contextAvailable: retrievedChunks.length > 0,
       retrievedChunks,
       similarityScores,
       sourceDocuments,
       ragContextFormatted,
       retrievalLatencyMs,
+      retrievalEngine: 'PINECONE_SEMANTIC_SEARCH',
       isCacheHit: false,
       optimizationMetrics: {
-        hybridScoring: 'RRF (Dense Cosine + Sparse BM25)',
+        hybridScoring: 'RRF (Pinecone Dense Vector + Sparse BM25)',
         rerankingAlgorithm: 'Maximal Marginal Relevance (MMR)',
         duplicatesRemovedCount: duplicatesRemoved,
         calibratedRelevanceRange: '0.00-1.00',
+        relevanceThresholdApplied: this.minSimilarityThreshold,
       },
       timestamp: new Date().toISOString(),
     };
@@ -166,16 +250,15 @@ class KnowledgeRetrievalService {
   }
 
   /**
-   * Hybrid Reciprocal Rank Fusion (RRF) Scorer
-   * Combines Dense Vector Rank + Sparse Keyword Frequency Rank
+   * Hybrid Reciprocal Rank Fusion (RRF) Scorer with Category Affinity
    */
-  _applyRrfHybridScoring(queryText, candidates) {
+  _applyRrfHybridScoring(queryText, candidates, targetCategory = null) {
     const queryTerms = queryText.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
     const scored = [];
 
     // Compute Sparse Term Ranks
     const sparseScores = candidates.map((cand) => {
-      const text = (cand.metadata.cleanText + ' ' + cand.metadata.sectionTitle).toLowerCase();
+      const text = ((cand.metadata?.cleanText || '') + ' ' + (cand.metadata?.sectionTitle || '')).toLowerCase();
       let termMatches = 0;
       for (const t of queryTerms) {
         if (text.includes(t)) termMatches++;
@@ -197,19 +280,38 @@ class KnowledgeRetrievalService {
       const rSparse = sparseRankMap.get(cand.chunkId) || 10;
 
       // RRF Formula: 1 / (60 + rDense) + 1 / (60 + rSparse)
-      const rrfScore = 1.0 / (60 + rDense) + 1.0 / (60 + rSparse);
-      const combinedScore = cand.score * 0.7 + rrfScore * 30 * 0.3;
+      let rrfScore = 1.0 / (60 + rDense) + 1.0 / (60 + rSparse);
+
+      // Boost matching disaster category
+      if (targetCategory && cand.metadata?.disasterType === targetCategory) {
+        rrfScore += 0.05;
+      }
 
       scored.push({
         ...cand,
-        score: combinedScore,
-        rrfScore,
         rrfRank: i + 1,
+        rrfScore,
+        score: targetCategory && cand.metadata?.disasterType === targetCategory
+          ? Math.min(1.0, cand.score + 0.10)
+          : cand.score,
       });
     }
 
-    scored.sort((a, b) => b.score - a.score);
+    // Sort descending by RRF score
+    scored.sort((a, b) => b.rrfScore - a.rrfScore);
     return scored;
+  }
+
+  /** Calibrates raw scores into normalized range */
+  _calibrateRelevanceScore(rawScore) {
+    if (rawScore < 0.28) {
+      return Number(Math.max(0, rawScore).toFixed(4));
+    }
+    const minRaw = 0.28;
+    const maxRaw = 0.85;
+    const norm = (rawScore - minRaw) / (maxRaw - minRaw);
+    const clamped = Math.max(0.45, Math.min(0.99, 0.45 + norm * 0.54));
+    return Number(clamped.toFixed(4));
   }
 
   /**
@@ -270,19 +372,10 @@ class KnowledgeRetrievalService {
     return { rankedResults: selected, duplicatesRemoved };
   }
 
-  /** Calibrates raw scores into normalized range */
-  _calibrateRelevanceScore(rawScore) {
-    const minRaw = 0.20;
-    const maxRaw = 0.85;
-    const norm = (rawScore - minRaw) / (maxRaw - minRaw);
-    const clamped = Math.max(0.40, Math.min(0.99, norm));
-    return Number(clamped.toFixed(4));
-  }
-
   /** Formats prompt context for Gemma */
   _formatRagContextPrompt(chunks = [], sources = []) {
     if (!chunks || chunks.length === 0) {
-      return '[OFFICIAL DISASTER GUIDANCE: None retrieved]';
+      return '[OFFICIAL DISASTER GUIDANCE & PROTOCOLS (RAG CONTEXT): External disaster knowledge context was unavailable for this incident. Rely strictly on verified general emergency response protocols and citizen report facts.]';
     }
 
     let prompt = '[OFFICIAL DISASTER GUIDANCE & PROTOCOLS (RAG CONTEXT)]\n';

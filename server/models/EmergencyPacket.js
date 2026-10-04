@@ -9,6 +9,11 @@ const emergencyPacketSchema = new mongoose.Schema(
       index: true,
       trim: true,
     },
+    clientRequestId: {
+      type: String,
+      index: true,
+      trim: true,
+    },
     timestamp: {
       type: Date,
       default: Date.now,
@@ -33,13 +38,89 @@ const emergencyPacketSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    speechRecognitionTranscript: {
+      type: String,
+      default: '',
+    },
+    transcriptScript: {
+      type: String,
+      default: 'Latin',
+    },
+    transcriptQuality: {
+      type: String,
+      default: 'NATIVE',
+    },
+    transcriptStyle: {
+      type: String,
+      default: 'ROMANIZED',
+    },
+    selectedVoiceLanguage: {
+      type: String,
+      default: null,
+    },
+    selectedVoiceLanguageCode: {
+      type: String,
+      default: null,
+    },
     detectedLanguage: {
       type: String,
       default: 'English',
     },
+    detectedLanguageCode: {
+      type: String,
+      default: 'en-US',
+    },
+    originalLanguage: {
+      type: String,
+      default: null,
+    },
+    nativeScriptTranscript: {
+      type: String,
+      default: '',
+    },
+    nativeScriptAvailable: {
+      type: Boolean,
+      default: false,
+    },
+    confidence: {
+      type: Number,
+      default: null,
+    },
     englishTranslation: {
       type: String,
       default: '',
+    },
+    englishMeaning: {
+      type: String,
+      default: '',
+    },
+    meaning: {
+      type: String,
+      default: '',
+    },
+    reason: {
+      type: String,
+      default: '',
+    },
+    classificationConfidence: {
+      type: String,
+      default: 'HIGH',
+    },
+    categoryConflict: {
+      type: Boolean,
+      default: false,
+    },
+    evidenceBasis: {
+      type: String,
+      default: 'VOICE',
+    },
+    reportedOccurrenceTime: {
+      type: Date,
+      default: null,
+    },
+    needsReview: {
+      type: Boolean,
+      default: false,
     },
     gemmaAnalysis: {
       type: Object,
@@ -100,6 +181,46 @@ const emergencyPacketSchema = new mongoose.Schema(
       type: String,
       default: 'usr_guest',
     },
+    victimName: {
+      type: String,
+      default: 'Citizen User',
+    },
+    citizenName: {
+      type: String,
+      default: 'Citizen User',
+    },
+    deviceId: {
+      type: String,
+      default: null,
+    },
+    category: {
+      type: String,
+      default: 'GENERAL',
+    },
+    detectedEmergencyCategory: {
+      type: String,
+      default: 'OTHER',
+    },
+    selectedCategory: {
+      type: String,
+      default: 'GENERAL',
+    },
+    citizenSelectedCategory: {
+      type: String,
+      default: 'GENERAL',
+    },
+    description: {
+      type: String,
+      default: '',
+    },
+    originalTranscript: {
+      type: String,
+      default: '',
+    },
+    translatedTranscript: {
+      type: String,
+      default: null,
+    },
     packetStatus: {
       type: String,
       enum: ['CREATED', 'QUEUED_LOCAL', 'TRANSMITTING', 'DELIVERED', 'PENDING_GEMMA4', 'PENDING_AI_ANALYSIS', 'Pending AI Analysis', 'PROCESSING', 'RESOLVED'],
@@ -153,10 +274,41 @@ const emergencyPacketSchema = new mongoose.Schema(
       finalUploadDevice: { type: String, default: null },
       relayPath: [{ type: String }],
     },
+    acknowledgement: {
+      status: {
+        type: String,
+        enum: ['UNACKNOWLEDGED', 'ACKNOWLEDGED'],
+        default: 'UNACKNOWLEDGED',
+      },
+      acknowledgedAt: { type: Date, default: null },
+      acknowledgedBy: { type: String, default: null },
+    },
+    selectedCategory: { type: String, default: 'GENERAL' },
+    citizenInput: {
+      selectedCategory: { type: String, default: 'GENERAL' },
+      voiceTranscript: { type: String, default: '' },
+      textDescription: { type: String, default: '' },
+      photoReference: { type: Object, default: null },
+      gpsCoordinates: { type: Object, default: null },
+    },
+    aiAssessment: {
+      category: { type: String, default: 'GENERAL' },
+      severity: { type: String, default: 'HIGH' },
+      priority: { type: String, default: 'HIGH' },
+      confidence: { type: Number, default: 0.95 },
+      reason: { type: String, default: '' },
+      keyEvidence: [{ type: String }],
+      contradictionDetected: { type: Boolean, default: false },
+      contradictionNote: { type: String, default: null },
+      confidenceNote: { type: String, default: null },
+    },
   },
   {
     timestamps: true,
   }
 );
+
+// Indexes for high-speed chronological queries (Phase 9)
+emergencyPacketSchema.index({ timestamp: -1 });
 
 module.exports = mongoose.model('EmergencyPacket', emergencyPacketSchema);

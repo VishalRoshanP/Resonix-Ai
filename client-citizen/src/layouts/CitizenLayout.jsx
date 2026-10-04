@@ -46,11 +46,11 @@ export default function CitizenLayout() {
               </div>
             )}
 
-            {/* Back to Portal Entry */}
+            {/* Citizen Home */}
             <button
-              onClick={() => navigate(ROUTES.LANDING)}
+              onClick={() => navigate(ROUTES.CITIZEN_HOME)}
               className="p-1.5 text-on-surface-variant hover:text-primary rounded-lg hover:bg-surface-container transition-colors cursor-pointer"
-              title="Return to Main Entry Portal"
+              title="Return to Citizen Emergency Home"
             >
               <span className="material-symbols-outlined text-lg">home</span>
             </button>
@@ -64,24 +64,36 @@ export default function CitizenLayout() {
       </main>
 
       {/* Footer Shortcut Bar */}
-      <footer className="sticky bottom-0 w-full bg-surface/95 backdrop-blur-md border-t border-outline-variant/60 py-2.5 px-3 z-20 pb-safe">
+      <footer className="sticky bottom-0 w-full bg-surface/95 backdrop-blur-md border-t border-outline-variant/60 py-2 sm:py-2.5 px-2 sm:px-3 z-20 pb-safe">
         <div className="max-w-md sm:max-w-lg mx-auto flex justify-between items-center text-xs">
           <NavLink
             to={ROUTES.CITIZEN_HOME}
             className={({ isActive }) =>
-              `flex items-center gap-1 font-bold px-3 py-2 min-h-[44px] rounded-xl transition-colors cursor-pointer ${
+              `flex items-center gap-1 font-bold px-2 sm:px-3 py-1.5 sm:py-2 min-h-[44px] rounded-xl transition-colors cursor-pointer ${
                 isActive ? 'bg-secondary text-white shadow-xs' : 'text-on-surface-variant hover:text-primary'
               }`
             }
           >
-            <span className="material-symbols-outlined text-base">emergency</span>
+            <span className="material-symbols-outlined text-base">home</span>
             <span>Home</span>
+          </NavLink>
+
+          <NavLink
+            to={ROUTES.CITIZEN_SOS}
+            className={({ isActive }) =>
+              `flex items-center gap-1 font-bold px-2 sm:px-3 py-1.5 sm:py-2 min-h-[44px] rounded-xl transition-colors cursor-pointer ${
+                isActive ? 'bg-error text-white shadow-xs shadow-error/30' : 'text-error font-extrabold hover:bg-error/10'
+              }`
+            }
+          >
+            <span className="material-symbols-outlined text-base">emergency</span>
+            <span>SOS</span>
           </NavLink>
 
           <NavLink
             to={ROUTES.CITIZEN_STATUS}
             className={({ isActive }) =>
-              `flex items-center gap-1 font-bold px-3 py-2 min-h-[44px] rounded-xl transition-colors cursor-pointer ${
+              `flex items-center gap-1 font-bold px-2 sm:px-3 py-1.5 sm:py-2 min-h-[44px] rounded-xl transition-colors cursor-pointer ${
                 isActive ? 'bg-secondary text-white shadow-xs' : 'text-on-surface-variant hover:text-primary'
               }`
             }
@@ -93,7 +105,7 @@ export default function CitizenLayout() {
           <NavLink
             to={ROUTES.CITIZEN_PROFILE}
             className={({ isActive }) =>
-              `flex items-center gap-1 font-bold px-3 py-2 min-h-[44px] rounded-xl transition-colors cursor-pointer ${
+              `flex items-center gap-1 font-bold px-2 sm:px-3 py-1.5 sm:py-2 min-h-[44px] rounded-xl transition-colors cursor-pointer ${
                 isActive ? 'bg-secondary text-white shadow-xs' : 'text-on-surface-variant hover:text-primary'
               }`
             }
@@ -105,7 +117,7 @@ export default function CitizenLayout() {
           <NavLink
             to={ROUTES.CITIZEN_SETTINGS}
             className={({ isActive }) =>
-              `flex items-center gap-1 font-bold px-3 py-2 min-h-[44px] rounded-xl transition-colors cursor-pointer ${
+              `flex items-center gap-1 font-bold px-2 sm:px-3 py-1.5 sm:py-2 min-h-[44px] rounded-xl transition-colors cursor-pointer ${
                 isActive ? 'bg-secondary text-white shadow-xs' : 'text-on-surface-variant hover:text-primary'
               }`
             }

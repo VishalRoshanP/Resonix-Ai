@@ -5,7 +5,7 @@ export default function ResponderDashboardPage() {
     <div className="space-y-6 text-left animate-fade-in">
       <div className="border-b border-outline-variant/60 pb-4">
         <h1 className="text-headline-lg font-extrabold text-primary">Responder Dashboard</h1>
-        <p className="text-body-md text-on-surface-variant mt-0.5">Command Center Operations Placeholder</p>
+        <p className="text-body-md text-on-surface-variant mt-0.5">Command Center Operations</p>
       </div>
 
       <Card className="p-8 text-center space-y-3 bg-surface-container-low border-dashed border-2 border-outline-variant">

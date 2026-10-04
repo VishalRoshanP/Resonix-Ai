@@ -2,10 +2,14 @@ const ApiResponse = require('../utils/apiResponse');
 const ApiError = require('../utils/apiError');
 
 const EmergencyReport = require('../models/EmergencyReport');
+const Incident = require('../models/Incident');
 const AiAnalysis = require('../models/AiAnalysis');
 const EmergencySummaryRecord = require('../models/EmergencySummaryRecord');
 const ConfidenceScoreRecord = require('../models/ConfidenceScoreRecord');
 const ExplainableAiRecord = require('../models/ExplainableAiRecord');
+const incidentTriageService = require('../services/incidentTriageService');
+const socketService = require('../services/socketService');
+const logger = require('../utils/logger');
 
 /**
  * @route   GET /api/reports
@@ -18,57 +22,28 @@ const getReports = async (req, res, next) => {
     const limit = parseInt(req.query.limit, 10) || 10;
 
     let reports = [];
+    let total = 0;
 
     if (EmergencyReport?.db?.readyState === 1) {
       try {
         const skip = (page - 1) * limit;
         const dbReports = await EmergencyReport.find().sort({ createdAt: -1 }).skip(skip).limit(limit);
-        const total = await EmergencyReport.countDocuments();
+        total = await EmergencyReport.countDocuments();
         if (dbReports && dbReports.length > 0) {
           reports = dbReports.map((r) => r.toObject());
-          return ApiResponse.success(res, 200, 'Reports retrieved successfully from database', {
-            reports,
-            pagination: {
-              total,
-              page,
-              limit,
-              totalPages: Math.ceil(total / limit) || 1,
-            },
-          });
         }
       } catch (err) {
-        // Fallback to sample array if query error
+        // Database query error handled gracefully with empty list
       }
     }
-
-    reports = [
-      {
-        id: 'rpt_101',
-        title: 'Flood Hazard Observation - Sector 4',
-        type: 'environmental',
-        severity: 'high',
-        status: 'submitted',
-        submittedBy: 'usr_002',
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 'rpt_102',
-        title: 'Structural Damage Assessment - Bridge Alpha',
-        type: 'structural',
-        severity: 'critical',
-        status: 'under_review',
-        submittedBy: 'usr_001',
-        createdAt: new Date().toISOString(),
-      },
-    ];
 
     return ApiResponse.success(res, 200, 'Reports retrieved successfully', {
       reports,
       pagination: {
-        total: reports.length,
+        total,
         page,
         limit,
-        totalPages: 1,
+        totalPages: Math.ceil(total / limit) || 1,
       },
     });
   } catch (error) {
@@ -91,22 +66,7 @@ const getReportById = async (req, res, next) => {
       } catch (_) {}
     }
 
-    if (id === 'notfound') {
-      return next(new ApiError(404, `Report with ID '${id}' not found`));
-    }
-
-    return ApiResponse.success(res, 200, 'Report details retrieved', {
-      report: {
-        id,
-        title: 'Flood Hazard Observation - Sector 4',
-        type: 'environmental',
-        severity: 'high',
-        status: 'submitted',
-        location: { latitude: 37.7749, longitude: -122.4194, sector: 'Sector 4' },
-        description: 'Water levels rising rapidly near main canal embankment.',
-        createdAt: new Date().toISOString(),
-      },
-    });
+    return next(new ApiError(404, `Report with ID '${id}' not found`));
   } catch (error) {
     next(error);
   }
@@ -214,7 +174,7 @@ const uploadReportPhoto = async (req, res, next) => {
           confidenceScores: analysis.confidenceScores || {},
           humanVerificationRequired: true, // Always true (AI visual observations never replace human verification)
           humanVerified: false,
-          gemmaModel: 'google/gemma-4-e4b-it',
+          gemmaModel: 'resonix-disaster-intelligence',
         });
       }
     } catch (dbErr) {
@@ -263,7 +223,7 @@ const TextUnderstanding = require('../models/TextUnderstanding');
 
 /**
  * @route   POST /api/reports/analyze-text
- * @desc    Analyze emergency text dispatch using Gemma 4 E4B and store AI output separately
+ * @desc    Analyze emergency text dispatch using Disaster AI and store AI output separately
  * @access  Public / Citizen
  */
 const analyzeTextReport = async (req, res, next) => {
@@ -293,14 +253,14 @@ const analyzeTextReport = async (req, res, next) => {
           keywords: analysis.keywords || [],
           confidence: analysis.confidence || 0.94,
           rawText: text,
-          gemmaModel: 'google/gemma-4-e4b-it',
+          gemmaModel: 'resonix-disaster-intelligence',
         });
       }
     } catch (dbErr) {
       // Fallback for mock/demo mode
     }
 
-    return ApiResponse.success(res, 200, 'Text report analyzed by Gemma 4 E4B and AI record stored separately', {
+    return ApiResponse.success(res, 200, 'Text report analyzed and AI record stored separately', {
       analysis,
       textRecordId: savedTextRecord?._id || null,
       analyzedAt: new Date().toISOString(),
@@ -373,7 +333,7 @@ const executeUnifiedPipeline = async (req, res, next) => {
           voiceAnalysis: unifiedData.detailedAiOutput.voiceUnderstanding || null,
           imageAnalysis: unifiedData.detailedAiOutput.imageUnderstanding || null,
           textAnalysis: unifiedData.detailedAiOutput.textUnderstanding || null,
-          gemmaModel: 'google/gemma-4-e4b-it',
+          gemmaModel: 'resonix-disaster-intelligence',
         });
       }
 
@@ -392,19 +352,30 @@ const executeUnifiedPipeline = async (req, res, next) => {
 
       // Collection 4: Confidence Scores (Per-field float confidence metrics)
       if (ConfidenceScoreRecord?.db?.readyState === 1) {
+        const rawScores = [
+          unifiedData.primaryDisasterType?.confidence,
+          unifiedData.severity?.confidence,
+          unifiedData.urgencyTier?.confidence,
+          unifiedData.peopleCount?.confidence,
+          unifiedData.locationData?.confidence,
+        ].filter((s) => typeof s === 'number' && !isNaN(s));
+        const avgScore = rawScores.length > 0
+          ? Math.round((rawScores.reduce((a, b) => a + b, 0) / rawScores.length) * 100) / 100
+          : null;
+
         savedConfidenceRecord = await ConfidenceScoreRecord.create({
           scoreId: `scr_${Date.now()}`,
           reportId,
           packetId,
           unifiedEmergencyId,
           fieldConfidenceScores: {
-            disaster: unifiedData.primaryDisasterType?.confidence || 0.96,
-            severity: unifiedData.severity?.confidence || 0.95,
-            urgency: unifiedData.urgencyTier?.confidence || 0.97,
-            people: unifiedData.peopleCount?.confidence || 0.92,
-            location: unifiedData.locationData?.confidence || 0.99,
+            disaster: typeof unifiedData.primaryDisasterType?.confidence === 'number' ? unifiedData.primaryDisasterType.confidence : null,
+            severity: typeof unifiedData.severity?.confidence === 'number' ? unifiedData.severity.confidence : null,
+            urgency: typeof unifiedData.urgencyTier?.confidence === 'number' ? unifiedData.urgencyTier.confidence : null,
+            people: typeof unifiedData.peopleCount?.confidence === 'number' ? unifiedData.peopleCount.confidence : null,
+            location: typeof unifiedData.locationData?.confidence === 'number' ? unifiedData.locationData.confidence : null,
           },
-          overallConfidence: 0.94,
+          overallConfidence: avgScore,
         });
       }
 
@@ -422,7 +393,7 @@ const executeUnifiedPipeline = async (req, res, next) => {
           medicalExplanation: unifiedData.explainableAi.medicalExplanation || '',
           hazardsExplanation: unifiedData.explainableAi.hazardsExplanation || '',
           fieldRationales: unifiedData.explainableAi.fieldRationales || {},
-          gemmaModel: 'google/gemma-4-e4b-it',
+          gemmaModel: 'resonix-disaster-intelligence',
         });
       }
 
@@ -446,7 +417,7 @@ const executeUnifiedPipeline = async (req, res, next) => {
           locationData: unifiedData.locationData,
           language: unifiedData.language,
           inputsProcessed: unifiedData.inputsProcessed,
-          fusionModel: 'google/gemma-4-e4b-it',
+          fusionModel: 'resonix-disaster-intelligence',
         });
       }
     } catch (dbErr) {
@@ -470,6 +441,138 @@ const executeUnifiedPipeline = async (req, res, next) => {
   }
 };
 
+/**
+ * @route   POST /api/reports/triage
+ * @desc    Convert citizen report payload into structured incident via AI triage
+ * @access  Public / Citizen / Responder
+ */
+const triageReportPayload = async (req, res, next) => {
+  try {
+    const rawReport = req.body || {};
+    const reportId = rawReport.reportId || rawReport.id || `rpt_${Date.now()}`;
+
+    // 1. Preserve original citizen report in EmergencyReport collection (if not already saved)
+    let savedReport = null;
+    if (EmergencyReport?.db?.readyState === 1) {
+      try {
+        const existing = await EmergencyReport.findOne({
+          $or: [{ reportId }, { _id: String(reportId).match(/^[0-9a-fA-F]{24}$/) ? reportId : null }],
+        });
+        if (!existing) {
+          savedReport = await EmergencyReport.create({
+            reportId,
+            packetId: rawReport.packetId || `pkt_${Date.now()}`,
+            userId: rawReport.userId || 'ANONYMOUS_CITIZEN',
+            rawText: rawReport.rawText || rawReport.text || rawReport.description || '',
+            audioReference: rawReport.audioReference?.dataUrl || rawReport.audioData ? 'audio_ref_attached' : null,
+            photoReference: rawReport.photoReference?.dataUrl || rawReport.imageUrl ? 'photo_ref_attached' : null,
+            gpsCoordinates: {
+              latitude: rawReport.gpsCoordinates?.latitude ?? rawReport.latitude ?? null,
+              longitude: rawReport.gpsCoordinates?.longitude ?? rawReport.longitude ?? null,
+              accuracyMeters: rawReport.gpsCoordinates?.accuracyMeters ?? rawReport.accuracy ?? null,
+              status: (rawReport.latitude || rawReport.gpsCoordinates?.latitude) ? 'GPS_AVAILABLE' : 'NO_GPS',
+            },
+            selectedLanguage: rawReport.selectedLanguage || 'en',
+            submittedAt: rawReport.submittedAt || new Date(),
+          });
+        } else {
+          savedReport = existing;
+        }
+      } catch (dbErr) {
+        logger.warn('[ReportController] MongoDB EmergencyReport save warning:', dbErr.message);
+      }
+    }
+
+    // 2. Perform AI Triage to convert citizen report into structured incident
+    const structuredIncident = incidentTriageService.triageCitizenReport({
+      ...rawReport,
+      reportId: savedReport?.reportId || reportId,
+    });
+
+    // 3. Persist Structured Incident into MongoDB
+    let savedIncident = null;
+    if (Incident?.db?.readyState === 1) {
+      try {
+        const { _id, ...cleanDoc } = structuredIncident;
+        savedIncident = await Incident.create(cleanDoc);
+      } catch (incErr) {
+        logger.warn('[ReportController] MongoDB Incident save warning:', incErr.message);
+      }
+    }
+
+    const finalIncident = savedIncident ? savedIncident.toObject() : structuredIncident;
+
+    // 4. Real-time broadcast to all responder units via Socket.IO
+    try {
+      socketService.broadcastIncidentCreated(finalIncident);
+    } catch (_) {}
+
+    return ApiResponse.success(res, 201, 'Citizen report triaged into structured incident successfully', {
+      incident: finalIncident,
+      data: finalIncident,
+      originalReport: savedReport ? savedReport.toObject() : rawReport,
+      isOfficialEmergencyDetermination: false,
+      disclaimer: incidentTriageService.OFFICIAL_DISCLAIMER,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @route   POST /api/reports/:id/triage
+ * @desc    Convert an existing citizen report into a structured incident by ID
+ * @access  Private / Public
+ */
+const triageReportById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    let reportDoc = null;
+
+    if (EmergencyReport?.db?.readyState === 1) {
+      try {
+        reportDoc = await EmergencyReport.findOne({
+          $or: [{ reportId: id }, { packetId: id }, { _id: String(id).match(/^[0-9a-fA-F]{24}$/) ? id : null }],
+        });
+      } catch (_) {}
+    }
+
+    if (!reportDoc) {
+      return next(new ApiError(404, `Citizen report with ID '${id}' not found`));
+    }
+
+    // Perform AI Triage to convert citizen report into structured incident
+    const structuredIncident = incidentTriageService.triageCitizenReport(reportDoc);
+
+    // Persist Structured Incident into MongoDB
+    let savedIncident = null;
+    if (Incident?.db?.readyState === 1) {
+      try {
+        const { _id, ...cleanDoc } = structuredIncident;
+        savedIncident = await Incident.create(cleanDoc);
+      } catch (incErr) {
+        logger.warn('[ReportController] MongoDB Incident save warning:', incErr.message);
+      }
+    }
+
+    const finalIncident = savedIncident ? savedIncident.toObject() : structuredIncident;
+
+    try {
+      socketService.broadcastIncidentCreated(finalIncident);
+    } catch (_) {}
+
+    return ApiResponse.success(res, 200, 'Citizen report triaged into structured incident successfully', {
+      incident: finalIncident,
+      data: finalIncident,
+      originalReport: reportDoc.toObject(),
+      isOfficialEmergencyDetermination: false,
+      disclaimer: incidentTriageService.OFFICIAL_DISCLAIMER,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getReports,
   getReportById,
@@ -480,6 +583,8 @@ module.exports = {
   saveReportLocation,
   analyzeTextReport,
   executeUnifiedPipeline,
+  triageReportPayload,
+  triageReportById,
 };
 
 

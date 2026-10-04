@@ -22,7 +22,7 @@ export default function VoiceRelayPage() {
         </div>
         <h2 className="text-headline-md font-bold text-primary mb-2">{isRecording ? 'Listening...' : 'Tap to Speak'}</h2>
         <p className="text-body-md text-on-surface-variant max-w-md text-center mb-6">
-          {isRecording ? 'Gemma 4 is processing your voice command in real-time.' : 'Initiate voice command to broadcast to relay network or query Gemma 4.'}
+          {isRecording ? 'Processing your voice command in real-time.' : 'Initiate voice command to broadcast to relay network or request response assistance.'}
         </p>
         <WaveformVisualizer active={isRecording} count={20} />
       </div>
@@ -31,7 +31,7 @@ export default function VoiceRelayPage() {
           <h4 className="text-sm font-bold text-primary mb-3">Recent Commands</h4>
           <ul className="space-y-2">
             {[
-              '"Gemma, analyze structural integrity of Bridge 9."',
+              '"Analyze structural integrity of Bridge 9."',
               '"Broadcast evacuation order for Sector 7."',
               '"What is the current flood risk level?"',
             ].map((cmd, i) => (
