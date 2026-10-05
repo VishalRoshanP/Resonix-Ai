@@ -34,6 +34,8 @@ class WeatherService {
   constructor(options = {}) {
     this.provider = options.provider || new OpenMeteoProvider();
     this.cache = options.cache || defaultCache;
+    this.inFlightRequests = new Map();
+    this.rateLimitExpiresAt = 0;
   }
 
   /**
@@ -57,6 +59,58 @@ class WeatherService {
   }
 
   /**
+   * Helper to retrieve MongoDB WeatherSnapshot with exact or nearby grid matching
+   * @private
+   */
+  async _getMongoSnapshot(type, validLat, validLon) {
+    try {
+      const WeatherSnapshot = require('../../models/WeatherSnapshot');
+      if (WeatherSnapshot?.db?.readyState === 1) {
+        const qLat = this.cache.quantize(validLat);
+        const qLon = this.cache.quantize(validLon);
+        const gridKey = `${qLat}:${qLon}`;
+
+        let snapshot = await WeatherSnapshot.findOne({ gridKey }).lean();
+        if (!snapshot) {
+          // Check nearby persisted snapshot within ~0.05° (~5.5km)
+          snapshot = await WeatherSnapshot.findOne({
+            latitude: { $gte: validLat - 0.05, $lte: validLat + 0.05 },
+            longitude: { $gte: validLon - 0.05, $lte: validLon + 0.05 },
+          }).sort({ lastSuccessfulFetch: -1 }).lean();
+        }
+
+        if (snapshot && snapshot.current) {
+          logger.info(`[WeatherService] Serving persisted MongoDB WeatherSnapshot for grid ${gridKey} during provider failure.`);
+          const snapshotData = {
+            location: {
+              latitude: snapshot.latitude,
+              longitude: snapshot.longitude,
+              name: snapshot.locationName,
+              timezone: snapshot.timezone,
+            },
+            timestamp: snapshot.lastSuccessfulFetch ? new Date(snapshot.lastSuccessfulFetch).toISOString() : new Date().toISOString(),
+            current: snapshot.current,
+            hourlyForecast: snapshot.hourlyForecast || [],
+            dailyForecast: snapshot.dailyForecast || [],
+            warnings: snapshot.warnings || [],
+            metadata: enrichMetadataWithFreshness({
+              ...(snapshot.metadata || {}),
+              isCached: true,
+              isStale: true,
+              cachedAt: snapshot.lastSuccessfulFetch ? new Date(snapshot.lastSuccessfulFetch).toISOString() : snapshot.metadata?.cachedAt,
+            }),
+          };
+          this.cache.set(type, validLat, validLon, snapshotData);
+          return snapshotData;
+        }
+      }
+    } catch (dbErr) {
+      logger.debug(`[WeatherService] MongoDB snapshot fallback note: ${dbErr.message}`);
+    }
+    return null;
+  }
+
+  /**
    * Internal execution helper with caching, timeout handling, and stale fallback
    * @private
    */
@@ -77,38 +131,14 @@ class WeatherService {
       }
     }
 
-    // 2. Query Live Provider
-    try {
-      const rawPayload = await fetchFn(validLat, validLon, options);
-      const normalized = normalizeWeatherPayload(rawPayload, {
-        lat: validLat,
-        lon: validLon,
-        locationName: options.locationName,
-        source: this.provider.getName(),
-        isStale: false,
-      });
+    // 2. If provider is currently in a 429 rate limit cooldown, avoid hammering upstream
+    if (this.rateLimitExpiresAt && Date.now() < this.rateLimitExpiresAt) {
+      const cooldownRemaining = Math.ceil((this.rateLimitExpiresAt - Date.now()) / 1000);
+      logger.warn(`[WeatherService] Upstream provider is in 429 rate-limit cooldown (${cooldownRemaining}s remaining). Trying stale/snapshot cache first.`);
 
-      // 3. Validate meteorological sanity of response
-      validateWeatherResponse(normalized);
-
-      // 4. Enrich with computed freshness metadata
-      normalized.metadata = enrichMetadataWithFreshness({
-        ...normalized.metadata,
-        isCached: false,
-        isStale: false,
-      });
-
-      // 5. Cache fresh response in-memory
-      this.cache.set(type, validLat, validLon, normalized);
-
-      return normalized;
-    } catch (err) {
-      logger.warn(`[WeatherService] Upstream provider error (${err.code || err.name}): ${err.message}`);
-
-      // 6. Try stale in-memory cache fallback
       const stale = this.cache.getStale(type, validLat, validLon);
       if (stale) {
-        logger.info(`[WeatherService] Serving stale in-memory cached ${type} weather for (${validLat}, ${validLon}) during provider failure.`);
+        logger.info(`[WeatherService] Serving stale in-memory cached ${type} weather for (${validLat}, ${validLon}) during provider rate-limit cooldown.`);
         return {
           ...stale,
           metadata: enrichMetadataWithFreshness({
@@ -119,59 +149,108 @@ class WeatherService {
         };
       }
 
-      // 7. Try MongoDB WeatherSnapshot persistent fallback (survives server reboots)
+      const snapshot = await this._getMongoSnapshot(type, validLat, validLon);
+      if (snapshot) {
+        return snapshot;
+      }
+
+      throw new ApiError(429, 'Weather service rate limit exceeded. Please retry shortly.');
+    }
+
+    // 3. Coalesce concurrent in-flight requests for the same quantized coordinates
+    const inFlightKey = this.cache.buildKey(type, validLat, validLon);
+    if (!options.bypassCache && this.inFlightRequests.has(inFlightKey)) {
+      logger.debug(`[WeatherService] Coalescing concurrent in-flight request for ${inFlightKey}`);
+      return await this.inFlightRequests.get(inFlightKey);
+    }
+
+    const executionPromise = (async () => {
+      // Query Live Provider
       try {
-        const WeatherSnapshot = require('../../models/WeatherSnapshot');
-        if (WeatherSnapshot?.db?.readyState === 1) {
-          const qLat = this.cache.quantize(validLat);
-          const qLon = this.cache.quantize(validLon);
-          const gridKey = `${qLat}:${qLon}`;
-          const snapshot = await WeatherSnapshot.findOne({ gridKey }).lean();
-          if (snapshot && snapshot.current) {
-            logger.info(`[WeatherService] Serving persisted MongoDB WeatherSnapshot for grid ${gridKey} during provider failure.`);
-            const snapshotData = {
-              location: {
-                latitude: snapshot.latitude,
-                longitude: snapshot.longitude,
-                name: snapshot.locationName,
-                timezone: snapshot.timezone,
-              },
-              timestamp: snapshot.lastSuccessfulFetch ? new Date(snapshot.lastSuccessfulFetch).toISOString() : new Date().toISOString(),
-              current: snapshot.current,
-              hourlyForecast: snapshot.hourlyForecast || [],
-              dailyForecast: snapshot.dailyForecast || [],
-              warnings: snapshot.warnings || [],
-              metadata: enrichMetadataWithFreshness({
-                ...(snapshot.metadata || {}),
-                isCached: true,
-                isStale: true,
-                cachedAt: snapshot.lastSuccessfulFetch ? new Date(snapshot.lastSuccessfulFetch).toISOString() : snapshot.metadata?.cachedAt,
-              }),
-            };
-            this.cache.set(type, validLat, validLon, snapshotData);
-            return snapshotData;
-          }
+        const rawPayload = await fetchFn(validLat, validLon, options);
+        const normalized = normalizeWeatherPayload(rawPayload, {
+          lat: validLat,
+          lon: validLon,
+          locationName: options.locationName,
+          source: this.provider.getName(),
+          isStale: false,
+        });
+
+        // Validate meteorological sanity of response
+        validateWeatherResponse(normalized);
+
+        // Enrich with computed freshness metadata
+        normalized.metadata = enrichMetadataWithFreshness({
+          ...normalized.metadata,
+          isCached: false,
+          isStale: false,
+        });
+
+        // Cache fresh response in-memory
+        this.cache.set(type, validLat, validLon, normalized);
+
+        // Reset rate limit state on successful live response
+        this.rateLimitExpiresAt = 0;
+
+        return normalized;
+      } catch (err) {
+        logger.warn(`[WeatherService] Upstream provider error (${err.code || err.name}): ${err.message}`);
+
+        if (err.code === 'PROVIDER_RATE_LIMIT' || err.status === 429) {
+          const cooldownMs = (err.retryAfterSeconds ? err.retryAfterSeconds * 1000 : 60000);
+          this.rateLimitExpiresAt = Date.now() + cooldownMs;
+          logger.warn(`[WeatherService] Upstream provider 429 rate limit recorded. Cooldown set for ${Math.round(cooldownMs / 1000)}s.`);
         }
-      } catch (dbErr) {
-        logger.debug(`[WeatherService] MongoDB snapshot fallback note: ${dbErr.message}`);
+
+        // Try stale in-memory cache fallback
+        const stale = this.cache.getStale(type, validLat, validLon);
+        if (stale) {
+          logger.info(`[WeatherService] Serving stale in-memory cached ${type} weather for (${validLat}, ${validLon}) during provider failure.`);
+          return {
+            ...stale,
+            metadata: enrichMetadataWithFreshness({
+              ...(stale.metadata || {}),
+              isCached: true,
+              isStale: true,
+            }),
+          };
+        }
+
+        // Try MongoDB WeatherSnapshot persistent fallback (survives server reboots)
+        const snapshot = await this._getMongoSnapshot(type, validLat, validLon);
+        if (snapshot) {
+          return snapshot;
+        }
+
+        // Map to standardized HTTP error
+        if (err instanceof ApiError) throw err;
+
+        if (err.code === 'PROVIDER_TIMEOUT' || err.status === 504) {
+          throw new ApiError(504, 'Weather service request timed out. Upstream meteorological provider did not respond in time.');
+        }
+
+        if (err.code === 'PROVIDER_RATE_LIMIT' || err.status === 429) {
+          throw new ApiError(429, 'Weather service rate limit exceeded. Please retry shortly.');
+        }
+
+        if (err.code === 'PROVIDER_UNAVAILABLE' || err.status === 503) {
+          throw new ApiError(503, 'Weather data currently unavailable. Meteorological provider service is offline or unreachable.');
+        }
+
+        throw new ApiError(502, `Weather provider error: ${err.message}`);
       }
+    })();
 
-      // 8. Map to standardized HTTP error
-      if (err instanceof ApiError) throw err;
+    if (!options.bypassCache) {
+      this.inFlightRequests.set(inFlightKey, executionPromise);
+    }
 
-      if (err.code === 'PROVIDER_TIMEOUT' || err.status === 504) {
-        throw new ApiError(504, 'Weather service request timed out. Upstream meteorological provider did not respond in time.');
+    try {
+      return await executionPromise;
+    } finally {
+      if (!options.bypassCache) {
+        this.inFlightRequests.delete(inFlightKey);
       }
-
-      if (err.code === 'PROVIDER_RATE_LIMIT' || err.status === 429) {
-        throw new ApiError(429, 'Weather service rate limit exceeded. Please retry shortly.');
-      }
-
-      if (err.code === 'PROVIDER_UNAVAILABLE' || err.status === 503) {
-        throw new ApiError(503, 'Weather data currently unavailable. Meteorological provider service is offline or unreachable.');
-      }
-
-      throw new ApiError(502, `Weather provider error: ${err.message}`);
     }
   }
 

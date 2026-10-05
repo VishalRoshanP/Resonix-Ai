@@ -101,26 +101,52 @@ class WeatherCache {
     const key = this.buildKey(type, latOrQuery, lon);
     const entry = this.store.get(key);
 
-    if (!entry) return null;
-
-    if (Date.now() > entry.expiresAt) {
-      return null; // Expired
+    if (entry && Date.now() <= entry.expiresAt) {
+      if (Array.isArray(entry.data)) {
+        return [...entry.data];
+      }
+      return {
+        ...entry.data,
+        metadata: {
+          ...(entry.data.metadata || {}),
+          cachedAt: entry.cachedAt,
+          isStale: false,
+          ttlSeconds: entry.ttlSeconds,
+        },
+      };
     }
 
-    if (Array.isArray(entry.data)) {
-      return [...entry.data];
+    // Nearby cache lookup: for coordinate queries, check if fresh entry exists within ~0.03° (~3.3km)
+    if (type !== 'LOCATION' && lon !== undefined && !isNaN(Number(latOrQuery)) && !isNaN(Number(lon))) {
+      const qLat = this.quantize(latOrQuery);
+      const qLon = this.quantize(lon);
+      const now = Date.now();
+      const prefix = `${type}:`;
+
+      for (const [k, e] of this.store.entries()) {
+        if (k.startsWith(prefix) && now <= e.expiresAt) {
+          const parts = k.split(':');
+          if (parts.length >= 3) {
+            const eLat = parseFloat(parts[1]);
+            const eLon = parseFloat(parts[2]);
+            if (!isNaN(eLat) && !isNaN(eLon) && Math.abs(eLat - qLat) <= 0.03 && Math.abs(eLon - qLon) <= 0.03) {
+              if (Array.isArray(e.data)) return [...e.data];
+              return {
+                ...e.data,
+                metadata: {
+                  ...(e.data.metadata || {}),
+                  cachedAt: e.cachedAt,
+                  isStale: false,
+                  ttlSeconds: e.ttlSeconds,
+                },
+              };
+            }
+          }
+        }
+      }
     }
 
-    // Attach fresh cache metadata
-    return {
-      ...entry.data,
-      metadata: {
-        ...(entry.data.metadata || {}),
-        cachedAt: entry.cachedAt,
-        isStale: false,
-        ttlSeconds: entry.ttlSeconds,
-      },
-    };
+    return null;
   }
 
   /**
@@ -134,22 +160,53 @@ class WeatherCache {
     const key = this.buildKey(type, latOrQuery, lon);
     const entry = this.store.get(key);
 
-    if (!entry) return null;
-
-    if (Array.isArray(entry.data)) {
-      return [...entry.data];
+    if (entry) {
+      if (Array.isArray(entry.data)) {
+        return [...entry.data];
+      }
+      return {
+        ...entry.data,
+        metadata: {
+          ...(entry.data.metadata || {}),
+          cachedAt: entry.cachedAt,
+          isStale: true,
+          ttlSeconds: entry.ttlSeconds,
+          staleNotice: 'Served from resilient local cache during upstream provider outage.',
+        },
+      };
     }
 
-    return {
-      ...entry.data,
-      metadata: {
-        ...(entry.data.metadata || {}),
-        cachedAt: entry.cachedAt,
-        isStale: true,
-        ttlSeconds: entry.ttlSeconds,
-        staleNotice: 'Served from resilient local cache during upstream provider outage.',
-      },
-    };
+    // Nearby stale fallback within ~0.05° (~5.5km)
+    if (type !== 'LOCATION' && lon !== undefined && !isNaN(Number(latOrQuery)) && !isNaN(Number(lon))) {
+      const qLat = this.quantize(latOrQuery);
+      const qLon = this.quantize(lon);
+      const prefix = `${type}:`;
+
+      for (const [k, e] of this.store.entries()) {
+        if (k.startsWith(prefix)) {
+          const parts = k.split(':');
+          if (parts.length >= 3) {
+            const eLat = parseFloat(parts[1]);
+            const eLon = parseFloat(parts[2]);
+            if (!isNaN(eLat) && !isNaN(eLon) && Math.abs(eLat - qLat) <= 0.05 && Math.abs(eLon - qLon) <= 0.05) {
+              if (Array.isArray(e.data)) return [...e.data];
+              return {
+                ...e.data,
+                metadata: {
+                  ...(e.data.metadata || {}),
+                  cachedAt: e.cachedAt,
+                  isStale: true,
+                  ttlSeconds: e.ttlSeconds,
+                  staleNotice: 'Served from nearby resilient local cache during upstream provider outage.',
+                },
+              };
+            }
+          }
+        }
+      }
+    }
+
+    return null;
   }
 
   /**

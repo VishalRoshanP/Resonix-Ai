@@ -1,3 +1,5 @@
+const PROD_BACKEND_ORIGIN = 'https://resonix-server.onrender.com';
+
 export function resolveBackendUrl() {
   let backend = import.meta.env.VITE_BACKEND_URL;
 
@@ -5,12 +7,12 @@ export function resolveBackendUrl() {
     backend = import.meta.env.VITE_API_BASE_URL.replace(/\/api\/v1\/?$/, '').replace(/\/api\/?$/, '');
   }
 
-  if (!backend || (import.meta.env.DEV && (backend.includes('YOUR') || backend.includes('your') || backend.includes('resonix-server.onrender.com')))) {
-    backend = import.meta.env.DEV ? 'http://localhost:5000' : '';
+  if (!backend || backend.includes('YOUR') || backend.includes('your') || (import.meta.env.DEV && backend.includes('resonix-server.onrender.com'))) {
+    backend = import.meta.env.DEV ? 'http://localhost:5000' : PROD_BACKEND_ORIGIN;
   }
 
   // Remove trailing slash if present
-  backend = backend ? backend.replace(/\/+$/, '') : '';
+  backend = (backend || PROD_BACKEND_ORIGIN).replace(/\/+$/, '');
 
   // On Native Android Capacitor Container: NEVER call mobile device localhost loopback
   if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {

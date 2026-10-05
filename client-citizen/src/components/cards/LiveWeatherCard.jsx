@@ -113,6 +113,14 @@ export default function LiveWeatherCard({ className = '' }) {
     ? (reverseGeocodedName || (locationData ? `GPS: ${locationData.latitude.toFixed(2)}, ${locationData.longitude.toFixed(2)}` : 'Bengaluru Hub'))
     : (customLocation?.displayName || customLocation?.name || 'Selected Location');
 
+  const activeLocationLabelRef = useRef(activeLocationLabel);
+  useEffect(() => {
+    activeLocationLabelRef.current = activeLocationLabel;
+  }, [activeLocationLabel]);
+
+  const lastFetchedWeatherCoordsRef = useRef({ lat: null, lon: null });
+  const isWeatherFetchingRef = useRef(false);
+
   // Reverse geocode when GPS coordinates update
   useEffect(() => {
     if (locationMode === 'CURRENT' && locationData?.latitude && locationData?.longitude) {
@@ -127,31 +135,46 @@ export default function LiveWeatherCard({ className = '' }) {
         })
         .catch(() => {});
     }
-  }, [locationMode, locationData]);
+  }, [locationMode, locationData?.latitude, locationData?.longitude]);
 
   // Fetch weather data for active coordinates
   const fetchWeather = useCallback(async (isBypass = false) => {
+    // Prevent redundant fetches for identical coordinates unless explicit bypass/retry
+    if (!isBypass && lastFetchedWeatherCoordsRef.current.lat !== null) {
+      const dLat = Math.abs(lastFetchedWeatherCoordsRef.current.lat - activeLat);
+      const dLon = Math.abs(lastFetchedWeatherCoordsRef.current.lon - activeLon);
+      if (dLat < 0.005 && dLon < 0.005) {
+        return;
+      }
+    }
+    if (isWeatherFetchingRef.current && !isBypass) {
+      return;
+    }
+
     try {
+      isWeatherFetchingRef.current = true;
       if (isBypass) setIsRefreshing(true);
       setErrorNotice(null);
 
       const res = await weatherApi.getComprehensive(activeLat, activeLon, {
         fresh: isBypass,
-        locationName: activeLocationLabel,
+        locationName: activeLocationLabelRef.current,
       });
       const data = res?.data || res;
       if (data && data.current) {
         setWeatherData(data);
         activeGridKeyRef.current = data.gridKey || `${Math.round(activeLat * 100) / 100}:${Math.round(activeLon * 100) / 100}`;
+        lastFetchedWeatherCoordsRef.current = { lat: activeLat, lon: activeLon };
       }
     } catch (err) {
       console.warn('[LiveWeatherCard] Weather query note:', err.message);
       setErrorNotice(err.message || 'Weather service currently unavailable');
     } finally {
+      isWeatherFetchingRef.current = false;
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [activeLat, activeLon, activeLocationLabel]);
+  }, [activeLat, activeLon]);
 
   useEffect(() => {
     fetchWeather(false);
@@ -223,18 +246,33 @@ export default function LiveWeatherCard({ className = '' }) {
     }
   }, [isNwpExpanded, fetchNwpData]);
 
+  const lastFetchedRiskCoordsRef = useRef({ lat: null, lon: null });
+  const isRiskFetchingRef = useRef(false);
+
   // Fetch Local Weather Risk Assessment (Decision-Support Layer)
   const fetchRiskData = useCallback(async () => {
+    if (lastFetchedRiskCoordsRef.current.lat !== null) {
+      const dLat = Math.abs(lastFetchedRiskCoordsRef.current.lat - activeLat);
+      const dLon = Math.abs(lastFetchedRiskCoordsRef.current.lon - activeLon);
+      if (dLat < 0.005 && dLon < 0.005) {
+        return;
+      }
+    }
+    if (isRiskFetchingRef.current) return;
+
     try {
+      isRiskFetchingRef.current = true;
       setIsRiskLoading(true);
       const res = await weatherApi.getLocalWeatherRisk(activeLat, activeLon);
       const data = res?.data || res;
       if (data && data.resonixRiskAssessment) {
         setRiskData(data);
+        lastFetchedRiskCoordsRef.current = { lat: activeLat, lon: activeLon };
       }
     } catch (err) {
       console.warn('[LiveWeatherCard] Local risk query note:', err.message);
     } finally {
+      isRiskFetchingRef.current = false;
       setIsRiskLoading(false);
     }
   }, [activeLat, activeLon]);

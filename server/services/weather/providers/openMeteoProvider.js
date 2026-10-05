@@ -42,10 +42,14 @@ class OpenMeteoProvider extends WeatherProvider {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
-        if (response.status === 429) {
+        if (response.status === 429 || errorText.includes('limit') || response.statusText?.toLowerCase().includes('too many')) {
           const err = new Error('Open-Meteo provider rate limit exceeded.');
           err.code = 'PROVIDER_RATE_LIMIT';
           err.status = 429;
+          const retryAfter = response.headers?.get ? response.headers.get('retry-after') : null;
+          if (retryAfter) {
+            err.retryAfterSeconds = parseInt(retryAfter, 10) || 60;
+          }
           throw err;
         }
         if (response.status >= 500) {
