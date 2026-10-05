@@ -28,26 +28,26 @@ export default function WeatherNwpDrawer({
         }}
         className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-surface-container-high/40 transition-colors cursor-pointer group"
       >
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-cyan-400 text-sm group-hover:scale-110 transition-transform">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <span className="material-symbols-outlined text-cyan-400 text-sm group-hover:scale-110 transition-transform shrink-0">
             grid_guides
           </span>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] font-bold text-primary group-hover:text-cyan-400 transition-colors">
                 Advanced Forecast Models
               </span>
-              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 shrink-0">
                 GFS · ECMWF · WRF
               </span>
             </div>
-            <span className="text-[9px] text-on-surface-variant block">
+            <span className="text-[9px] text-on-surface-variant block truncate sm:whitespace-normal">
               Ingested Numerical Weather Prediction (NWP) model forecasts & multi-model consensus
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-1 text-[10px] text-on-surface-variant group-hover:text-primary">
+        <div className="flex items-center gap-1 text-[10px] text-on-surface-variant group-hover:text-primary shrink-0 ml-2">
           <span>{isNwpExpanded ? 'Hide' : 'Expand'}</span>
           <span className="material-symbols-outlined text-xs transition-transform" style={{ transform: isNwpExpanded ? 'rotate(180deg)' : 'none' }}>
             expand_more
@@ -59,7 +59,7 @@ export default function WeatherNwpDrawer({
         <div className="p-3 border-t border-outline-variant/30 space-y-3 animate-fade-in">
           {/* Model Selection Tabs */}
           <div className="flex items-center justify-between gap-2 border-b border-outline-variant/30 pb-2">
-            <div className="flex items-center gap-1 overflow-x-auto">
+            <div className="flex items-center gap-1 overflow-x-auto min-w-0 flex-1 scrollbar-none pb-0.5">
               <button
                 id="tab-nwp-consensus"
                 type="button"
@@ -193,7 +193,7 @@ export default function WeatherNwpDrawer({
                     const step0 = timeline[0] || {};
                     const cons = step0.consensus || {};
                     return (
-                      <div className="grid grid-cols-4 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
                         <div className="p-2 rounded-xl bg-surface-container-high/60 border border-outline-variant/30 text-center">
                           <span className="text-[9px] text-on-surface-variant block">Consensus Temp</span>
                           <span className="text-sm font-bold text-amber-400">

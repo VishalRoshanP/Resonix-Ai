@@ -257,6 +257,9 @@ export default function EmergencyReportModal({ isOpen = true, isModal = true, on
   const countdownIntervalRef = useRef(null);
   const detailsSectionRef = useRef(null);
 
+  // Derive whether countdown is currently active from existing countdown timer state
+  const countdownActive = countdownRemaining !== null && countdownRemaining > 0;
+
   // 1. ALL REACT HOOKS DECLARED UNCONDITIONALLY AT VERY TOP LEVEL
   const [primaryCategory, setPrimaryCategory] = useState('FLOOD');
   const [category, setCategory] = useState('FLOOD');
@@ -1213,7 +1216,7 @@ export default function EmergencyReportModal({ isOpen = true, isModal = true, on
                       setJustSelectedCategory(cat.id);
                       setTimeout(() => setJustSelectedCategory(null), 250);
                     }}
-                    className={`p-2 sm:p-2.5 rounded-xl border text-left flex items-center justify-between gap-1.5 transition-all cursor-pointer min-h-[46px] active:scale-[0.98] ${
+                    className={`p-1.5 sm:p-2.5 rounded-xl border text-left flex items-center justify-between gap-1 sm:gap-1.5 transition-all cursor-pointer min-h-[46px] active:scale-[0.98] ${
                       justSelectedCategory === cat.id ? 'animate-category-confirm' : ''
                     } ${
                       isSelected
@@ -1332,7 +1335,7 @@ export default function EmergencyReportModal({ isOpen = true, isModal = true, on
           {/* 3. VOICE INPUT (Optional) */}
           {/* ============================================================ */}
           <div className="pt-3 border-t border-outline-variant/40 space-y-2">
-            <div className="flex items-center justify-between gap-1.5">
+            <div className="flex items-center justify-between gap-1.5 flex-wrap">
               <div className="flex items-center gap-1.5 shrink-0">
                 <span className="material-symbols-outlined text-base text-secondary shrink-0">mic</span>
                 <span className="font-bold text-primary text-xs">Voice message</span>
@@ -1340,13 +1343,13 @@ export default function EmergencyReportModal({ isOpen = true, isModal = true, on
               </div>
               {/* Voice Language Selector */}
               {!isRecording && !recordedAudio && (
-                <div className="flex items-center gap-1 shrink-0">
+                <div className="flex items-center gap-1 shrink-0 ml-auto">
                   <span className="text-[10px] text-on-surface-variant">Lang:</span>
                   <select
                     value={selectedVoiceLanguage}
                     onChange={(e) => setSelectedVoiceLanguage(e.target.value)}
                     aria-label="Voice language"
-                    className="px-1.5 py-0.5 rounded bg-surface border border-outline-variant/60 text-[10px] font-bold text-secondary focus:outline-none focus:border-secondary cursor-pointer max-w-[95px] truncate"
+                    className="px-1.5 py-0.5 rounded bg-surface border border-outline-variant/60 text-[10px] font-bold text-secondary focus:outline-none focus:border-secondary cursor-pointer max-w-[125px] sm:max-w-[150px] truncate"
                   >
                     {VOICE_LANGUAGES.map((v) => (
                       <option key={v.code} value={v.code}>
@@ -1617,7 +1620,7 @@ export default function EmergencyReportModal({ isOpen = true, isModal = true, on
       <div className="grid grid-cols-4 gap-1.5 text-center text-xs min-w-0">
         <a
           href="tel:112"
-          className="p-2.5 rounded-xl bg-error/10 hover:bg-error/20 active:scale-[0.96] border border-error/30 text-error font-extrabold flex flex-col items-center gap-0.5 transition-all cursor-pointer min-h-[44px]"
+          className="p-1.5 sm:p-2.5 rounded-xl bg-error/10 hover:bg-error/20 active:scale-[0.96] border border-error/30 text-error font-extrabold flex flex-col items-center gap-0.5 transition-all cursor-pointer min-h-[44px]"
           title="Call National Emergency Number 112"
         >
           <span className="material-symbols-outlined text-base">call</span>
@@ -1626,7 +1629,7 @@ export default function EmergencyReportModal({ isOpen = true, isModal = true, on
 
         <a
           href="tel:108"
-          className="p-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high active:scale-[0.96] border border-outline-variant text-primary font-extrabold flex flex-col items-center gap-0.5 transition-all cursor-pointer min-h-[44px]"
+          className="p-1.5 sm:p-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high active:scale-[0.96] border border-outline-variant text-primary font-extrabold flex flex-col items-center gap-0.5 transition-all cursor-pointer min-h-[44px]"
           title="Call Ambulance 108"
         >
           <span className="material-symbols-outlined text-base text-secondary">ambulance</span>
@@ -1635,7 +1638,7 @@ export default function EmergencyReportModal({ isOpen = true, isModal = true, on
 
         <a
           href="tel:101"
-          className="p-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high active:scale-[0.96] border border-outline-variant text-primary font-extrabold flex flex-col items-center gap-0.5 transition-all cursor-pointer min-h-[44px]"
+          className="p-1.5 sm:p-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high active:scale-[0.96] border border-outline-variant text-primary font-extrabold flex flex-col items-center gap-0.5 transition-all cursor-pointer min-h-[44px]"
           title="Call Fire Service 101"
         >
           <span className="material-symbols-outlined text-base text-error">local_fire_department</span>
@@ -1644,7 +1647,7 @@ export default function EmergencyReportModal({ isOpen = true, isModal = true, on
 
         <a
           href="tel:100"
-          className="p-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high active:scale-[0.96] border border-outline-variant text-primary font-extrabold flex flex-col items-center gap-0.5 transition-all cursor-pointer min-h-[44px]"
+          className="p-1.5 sm:p-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high active:scale-[0.96] border border-outline-variant text-primary font-extrabold flex flex-col items-center gap-0.5 transition-all cursor-pointer min-h-[44px]"
           title="Call Police 100"
         >
           <span className="material-symbols-outlined text-base text-secondary">local_police</span>
@@ -1782,20 +1785,20 @@ export default function EmergencyReportModal({ isOpen = true, isModal = true, on
         {sosPageState === 'DETAILS' && (
           <div ref={detailsSectionRef} className="space-y-3 animate-fade-in">
             {/* Back button allowing explicit return to red SOS button screen */}
-            <div className="flex items-center justify-between pb-0.5">
+            <div className="flex items-center justify-between pb-0.5 flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => {
                   setSosPageState('READY');
                   setSubmitMessage('');
                 }}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-on-surface-variant hover:text-primary transition-colors cursor-pointer py-1.5 px-2.5 rounded-lg bg-surface hover:bg-surface-container border border-outline-variant/60 shadow-2xs active:scale-95"
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-on-surface-variant hover:text-primary transition-colors cursor-pointer py-1.5 px-2.5 rounded-lg bg-surface hover:bg-surface-container border border-outline-variant/60 shadow-2xs active:scale-95 shrink-0"
               >
                 <span className="material-symbols-outlined text-sm">arrow_back</span>
                 <span>Back to SOS Button</span>
               </button>
 
-              <span className="text-[11px] font-bold text-secondary uppercase tracking-wider">
+              <span className="text-[11px] font-bold text-secondary uppercase tracking-wider shrink-0">
                 Emergency Details
               </span>
             </div>

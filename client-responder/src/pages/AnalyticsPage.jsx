@@ -4,8 +4,14 @@ import Button from '../components/ui/Button';
 import { incidentApi } from '../services/api';
 
 export default function AnalyticsPage() {
-  const [incidents, setIncidents] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [incidents, setIncidents] = useState(() => {
+    const cached = incidentApi.getCachedIncidents?.();
+    return Array.isArray(cached) && cached.length > 0 ? cached : [];
+  });
+  const [isLoading, setIsLoading] = useState(() => {
+    const cached = incidentApi.getCachedIncidents?.();
+    return !(Array.isArray(cached) && cached.length > 0);
+  });
   const [timeRange, setTimeRange] = useState('7d');
   const [toastMsg, setToastMsg] = useState('');
 
@@ -25,8 +31,8 @@ export default function AnalyticsPage() {
     };
   }, []);
 
-  const fetchRealAnalytics = async (isBackground = false) => {
-    if (!isBackground && isMountedRef.current) setIsLoading(true);
+  const fetchRealAnalytics = async (isBackground = false, isFresh = false) => {
+    if (!isBackground && isMountedRef.current && incidents.length === 0) setIsLoading(true);
     if (activeControllerRef.current) {
       activeControllerRef.current.abort();
     }
@@ -34,7 +40,7 @@ export default function AnalyticsPage() {
     activeControllerRef.current = controller;
 
     try {
-      const res = await incidentApi.getIncidents({ signal: controller.signal });
+      const res = await incidentApi.getIncidents({ signal: controller.signal, fresh: isFresh });
       if (!isMountedRef.current) return;
       const rawList = Array.isArray(res)
         ? res
@@ -107,7 +113,7 @@ export default function AnalyticsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => fetchRealAnalytics(false)} className="min-h-[40px]">
+          <Button variant="secondary" size="sm" onClick={() => fetchRealAnalytics(false, true)} className="min-h-[40px]">
             <span className="material-symbols-outlined text-base">refresh</span>
             <span>Refresh Real Analytics</span>
           </Button>

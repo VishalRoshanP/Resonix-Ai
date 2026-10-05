@@ -245,7 +245,7 @@ export default function CitizenProfilePage() {
   return (
     <div className="w-full py-4 sm:py-6 space-y-5 text-left animate-fade-in">
       {/* Header Profile Section */}
-      <Card className="p-5 border border-outline-variant/60 shadow-md space-y-4">
+      <Card className="p-4 sm:p-5 border border-outline-variant/60 shadow-md space-y-4">
         <div className="flex items-center gap-4">
           {/* Avatar Photo Container */}
           <div className="relative shrink-0">

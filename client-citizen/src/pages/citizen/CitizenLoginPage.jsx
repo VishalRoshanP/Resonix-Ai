@@ -85,7 +85,7 @@ export default function CitizenLoginPage() {
       </div>
 
       {/* Main Sign In Form Card */}
-      <Card className="p-6 space-y-5 border border-outline-variant/60 shadow-lg">
+      <Card className="p-4 sm:p-6 space-y-5 border border-outline-variant/60 shadow-lg">
         <div className="text-center space-y-1">
           <h1 className="text-2xl font-extrabold text-primary">Citizen Sign In</h1>
           <p className="text-xs text-on-surface-variant">Sign in to sync emergency history & contact details</p>

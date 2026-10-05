@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
-import { incidentApi, weatherApi, resourceApi } from '../services/api';
+import { incidentApi, weatherApi, resourceApi, invalidateApiCache } from '../services/api';
 import useSocket from '../hooks/useSocket';
 import { RESPONDER_ROUTES } from '../constants/routes';
 import IncidentDetailModal from '../components/incidents/IncidentDetailModal';
@@ -61,14 +61,28 @@ export default function DashboardPage() {
   const { playEmergencyAlertSound, triggerVibration } = useSettings();
 
   // 1. Citizen Incidents State (Real MongoDB Data Only)
-  const [incidents, setIncidents] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [incidents, setIncidents] = useState(() => {
+    const cached = incidentApi.getCachedIncidents?.();
+    return Array.isArray(cached) && cached.length > 0 ? cached : [];
+  });
+  const [isLoading, setIsLoading] = useState(() => {
+    const cached = incidentApi.getCachedIncidents?.();
+    return !(Array.isArray(cached) && cached.length > 0);
+  });
   const [incidentsError, setIncidentsError] = useState(null);
-  const [dashboardSummary, setDashboardSummary] = useState(null);
+  const [dashboardSummary, setDashboardSummary] = useState(() => {
+    return incidentApi.getCachedDashboardSummary?.() || null;
+  });
 
   // 2. Incident Clusters State (Real Multi-Citizen Fusion Data)
-  const [clusters, setClusters] = useState([]);
-  const [isLoadingClusters, setIsLoadingClusters] = useState(true);
+  const [clusters, setClusters] = useState(() => {
+    const cached = incidentApi.getCachedClusters?.();
+    return Array.isArray(cached) && cached.length > 0 ? cached : [];
+  });
+  const [isLoadingClusters, setIsLoadingClusters] = useState(() => {
+    const cached = incidentApi.getCachedClusters?.();
+    return !(Array.isArray(cached) && cached.length > 0);
+  });
   const [clustersError, setClustersError] = useState(null);
   const [selectedCluster, setSelectedCluster] = useState(null);
   const [isClusterModalOpen, setIsClusterModalOpen] = useState(false);
@@ -392,7 +406,7 @@ export default function DashboardPage() {
     const promise = (async () => {
       const { signal, cleanup } = createRequestSignal('clusters', 15000);
       try {
-        if (isMountedRef.current && !isBackground) {
+        if (isMountedRef.current && !isBackground && clustersCountRef.current === 0) {
           setIsLoadingClusters(true);
           setClustersError(null);
         }
@@ -423,7 +437,7 @@ export default function DashboardPage() {
   }, []);
 
   // Fetch Lightweight Dashboard Summary Metrics (Stable Callback)
-  const fetchDashboardSummary = useCallback(async () => {
+  const fetchDashboardSummary = useCallback(async (isFresh = false) => {
     if (inFlightPromisesRef.current.summary) {
       return inFlightPromisesRef.current.summary;
     }
@@ -431,7 +445,7 @@ export default function DashboardPage() {
     const promise = (async () => {
       const { signal, cleanup } = createRequestSignal('summary', 25000);
       try {
-        const summary = await incidentApi.getDashboardSummary({ signal });
+        const summary = await incidentApi.getDashboardSummary({ signal, fresh: isFresh });
         if (isMountedRef.current && summary) {
           setDashboardSummary(summary);
         }
@@ -448,19 +462,19 @@ export default function DashboardPage() {
   }, []);
 
   // Fetch REAL Incidents from Backend API (Stable Callback)
-  const fetchDashboardIncidents = useCallback(async (isBackground = false) => {
+  const fetchDashboardIncidents = useCallback(async (isBackground = false, isFresh = false) => {
     if (inFlightPromisesRef.current.incidents) {
       return inFlightPromisesRef.current.incidents;
     }
 
     const promise = (async () => {
       const { signal, cleanup } = createRequestSignal('incidents', 20000);
-      if (!isBackground && isMountedRef.current) {
+      if (!isBackground && isMountedRef.current && incidentsCountRef.current === 0) {
         setIsLoading(true);
         setIncidentsError(null);
       }
       try {
-        const rawList = await incidentApi.getIncidents({ signal });
+        const rawList = await incidentApi.getIncidents({ signal, fresh: isFresh });
 
         const deduplicatedList = [];
         for (const item of rawList) {
@@ -526,9 +540,9 @@ export default function DashboardPage() {
   const handleFullRefresh = useCallback(async () => {
     setSyncState((prev) => ({ ...prev, isSyncing: true }));
     await Promise.allSettled([
-      fetchDashboardIncidents(false),
+      fetchDashboardIncidents(false, true),
       fetchDashboardClusters(false),
-      fetchDashboardSummary(),
+      fetchDashboardSummary(true),
       fetchWeatherAndRisk(true),
       fetchAvailableResources(),
     ]);
@@ -689,8 +703,9 @@ export default function DashboardPage() {
         if (lastSocketEvent.type === 'FUSION_REFRESHED') {
           if (Array.isArray(lastSocketEvent.clusters)) {
             setClusters(lastSocketEvent.clusters);
+          } else {
+            fetchDashboardClusters();
           }
-          fetchDashboardClusters();
         }
 
         if (lastSocketEvent.type === 'FUSION_UPDATED') {
@@ -706,7 +721,6 @@ export default function DashboardPage() {
               return [cluster, ...prev];
             });
           }
-          fetchDashboardClusters();
         }
 
         if (lastSocketEvent.type === 'RESOURCE_UPDATED') {
@@ -716,6 +730,7 @@ export default function DashboardPage() {
         if (lastSocketEvent.type === 'INCIDENT_CREATED' || lastSocketEvent.type === 'NEW_EMERGENCY') {
           playEmergencyAlertSound?.();
           triggerVibration?.();
+          invalidateApiCache('/incidents');
         }
 
         const newDoc = lastSocketEvent.incident || lastSocketEvent.emergency || lastSocketEvent;
@@ -749,6 +764,7 @@ export default function DashboardPage() {
           }
 
           if (lastSocketEvent.type === 'INCIDENT_UPDATED') {
+            invalidateApiCache('/incidents');
             setSelectedIncident((prev) => {
               if (!prev) return prev;
               if (doIncidentsMatch(prev, newDoc) || (lastSocketEvent.incidentId && doIncidentsMatch(prev, { _id: lastSocketEvent.incidentId }))) {
@@ -763,7 +779,6 @@ export default function DashboardPage() {
                 completedMissions: (prev.completedMissions || 0) + 1,
               } : null);
             }
-            fetchDashboardClusters();
             fetchDashboardSummary();
           }
         }

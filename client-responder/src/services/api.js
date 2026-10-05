@@ -62,7 +62,9 @@ const safeReadCache = new Map();
 const CACHE_CONFIG = [
   { prefix: '/weather', ttl: 30000 },
   { prefix: '/resources', ttl: 10000 },
-  { prefix: '/incidents/dashboard-summary', ttl: 5000 },
+  { prefix: '/incidents/dashboard-summary', ttl: 10000 },
+  { prefix: '/incidents/fusion', ttl: 15000 },
+  { prefix: '/incidents', ttl: 15000 },
 ];
 
 export const invalidateApiCache = (pattern) => {
@@ -75,6 +77,15 @@ export const invalidateApiCache = (pattern) => {
       safeReadCache.delete(key);
     }
   }
+};
+
+export const getCachedApiResponse = (endpoint) => {
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const cached = safeReadCache.get(cleanEndpoint);
+  if (cached && Date.now() - cached.timestamp < 60000) {
+    return cached.data;
+  }
+  return null;
 };
 
 // Base HTTP verbs
@@ -171,6 +182,28 @@ export const incidentApi = {
     if (Array.isArray(res?.incidents)) return res.incidents;
     return [];
   },
+  getCachedIncidents: () => {
+    const cached = getCachedApiResponse('/incidents');
+    if (Array.isArray(cached)) return cached;
+    if (Array.isArray(cached?.data?.incidents)) return cached.data.incidents;
+    if (Array.isArray(cached?.data?.data)) return cached.data.data;
+    if (Array.isArray(cached?.data)) return cached.data;
+    if (Array.isArray(cached?.incidents)) return cached.incidents;
+    return null;
+  },
+  getCachedDashboardSummary: () => {
+    const cached = getCachedApiResponse('/incidents/dashboard-summary');
+    return cached?.data || cached || null;
+  },
+  getCachedClusters: () => {
+    const cached = getCachedApiResponse('/incidents/fusion');
+    if (Array.isArray(cached)) return cached;
+    if (Array.isArray(cached?.data?.clusters)) return cached.data.clusters;
+    if (Array.isArray(cached?.clusters)) return cached.clusters;
+    if (Array.isArray(cached?.data)) return cached.data;
+    return null;
+  },
+  getIncidentById: (id, options = {}) => api.get(`/incidents/${id}`, options),
   getDashboardSummary: async (options = {}) => {
     const res = await api.get('/incidents/dashboard-summary', options);
     return res?.data || res;

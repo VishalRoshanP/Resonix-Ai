@@ -83,8 +83,8 @@ export default function EmergencyAcknowledgementModal({ isOpen, onClose, data })
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 animate-fade-in bg-black/60 backdrop-blur-xs overflow-y-auto">
-      <Card className="bg-surface border border-outline-variant/60 max-w-md w-full p-5 sm:p-6 space-y-5 shadow-2xl text-left my-auto rounded-2xl relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 animate-fade-in bg-black/60 backdrop-blur-xs overflow-y-auto">
+      <Card className="bg-surface border border-outline-variant/60 max-w-md w-full p-4 sm:p-6 space-y-4 sm:space-y-5 shadow-2xl text-left my-auto rounded-2xl relative">
         {/* SUCCESS ICON BADGE */}
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-success/15 border border-success/30 flex items-center justify-center text-success shrink-0">

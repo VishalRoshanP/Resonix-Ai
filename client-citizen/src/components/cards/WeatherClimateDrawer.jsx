@@ -30,26 +30,26 @@ export default function WeatherClimateDrawer({
         }}
         className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-surface-container-high/40 transition-colors cursor-pointer group"
       >
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-secondary text-sm group-hover:scale-110 transition-transform">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <span className="material-symbols-outlined text-secondary text-sm group-hover:scale-110 transition-transform shrink-0">
             history
           </span>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] font-bold text-primary group-hover:text-secondary transition-colors">
                 Climate & History
               </span>
-              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
+              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 shrink-0">
                 2021–2025 Archive
               </span>
             </div>
-            <span className="text-[9px] text-on-surface-variant block">
+            <span className="text-[9px] text-on-surface-variant block truncate sm:whitespace-normal">
               Historical weather observations, monthly profile & 5-year climate trends
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-1 text-[10px] text-on-surface-variant group-hover:text-primary">
+        <div className="flex items-center gap-1 text-[10px] text-on-surface-variant group-hover:text-primary shrink-0 ml-2">
           <span>{isClimateExpanded ? 'Hide' : 'Explore'}</span>
           <span className="material-symbols-outlined text-xs transition-transform" style={{ transform: isClimateExpanded ? 'rotate(180deg)' : 'none' }}>
             expand_more

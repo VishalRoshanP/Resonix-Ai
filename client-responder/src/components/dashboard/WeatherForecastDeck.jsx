@@ -55,13 +55,20 @@ export default function WeatherForecastDeck({
   // Fetch authentic NWP model comparisons from existing backend APIs
   useEffect(() => {
     let isCancelled = false;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      try {
+        controller.abort();
+      } catch (_) {}
+    }, 10000);
+
     const fetchNwpIntelligence = async () => {
       try {
         setIsLoadingNwp(true);
         setNwpFetchError(null);
         const [compRes, modelsRes] = await Promise.allSettled([
-          weatherApi.getNwpComparison(operationalCoordinates.lat, operationalCoordinates.lon),
-          weatherApi.getNwpModels(),
+          weatherApi.getNwpComparison(operationalCoordinates.lat, operationalCoordinates.lon, { signal: controller.signal }),
+          weatherApi.getNwpModels({ signal: controller.signal }),
         ]);
 
         if (!isCancelled) {
@@ -86,7 +93,13 @@ export default function WeatherForecastDeck({
     };
 
     fetchNwpIntelligence();
-    return () => { isCancelled = true; };
+    return () => {
+      isCancelled = true;
+      clearTimeout(timeoutId);
+      try {
+        controller.abort();
+      } catch (_) {}
+    };
   }, [operationalCoordinates.lat, operationalCoordinates.lon]);
 
   // Combined Refresh Handler

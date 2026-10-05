@@ -1170,20 +1170,20 @@ export default function LiveWeatherCard({ className = '' }) {
             <div className="grid grid-cols-3 gap-1.5 sm:gap-2 text-[11px] font-mono text-on-surface-variant shrink-0 w-full sm:w-auto">
               <div
                 id="weather-submetric-humidity"
-                className="p-2 rounded-xl bg-surface-container/60 border border-outline-variant/30 text-center min-w-[70px] sm:min-w-[74px]"
+                className="p-1.5 sm:p-2 rounded-xl bg-surface-container/60 border border-outline-variant/30 text-center min-w-[62px] sm:min-w-[74px]"
               >
                 <span className="text-[9px] uppercase tracking-wider text-on-surface-variant/70 block">Humidity</span>
                 <span className="font-bold text-primary">
                   {current.humidity != null && !isNaN(Number(current.humidity)) ? `${current.humidity}%` : '—'}
                 </span>
               </div>
-              <div className="p-2 rounded-xl bg-surface-container/60 border border-outline-variant/30 text-center min-w-[70px] sm:min-w-[74px]">
+              <div className="p-1.5 sm:p-2 rounded-xl bg-surface-container/60 border border-outline-variant/30 text-center min-w-[62px] sm:min-w-[74px]">
                 <span className="text-[9px] uppercase tracking-wider text-on-surface-variant/70 block">Wind</span>
                 <span className="font-bold text-primary">
                   {current.windSpeed != null && !isNaN(Number(current.windSpeed)) ? `${current.windSpeed} km/h` : '—'}
                 </span>
               </div>
-              <div className="p-2 rounded-xl bg-surface-container/60 border border-outline-variant/30 text-center min-w-[70px] sm:min-w-[74px]">
+              <div className="p-1.5 sm:p-2 rounded-xl bg-surface-container/60 border border-outline-variant/30 text-center min-w-[62px] sm:min-w-[74px]">
                 <span className="text-[9px] uppercase tracking-wider text-on-surface-variant/70 block">Rain Chance</span>
                 <span className="font-bold text-primary">
                   {current.rainProbability != null && !isNaN(Number(current.rainProbability))
@@ -1210,7 +1210,7 @@ export default function LiveWeatherCard({ className = '' }) {
             </span>
           </div>
 
-          <div className="flex overflow-x-auto pb-2 scrollbar-thin snap-x sm:grid sm:grid-cols-4 md:grid-cols-7 gap-2">
+          <div className="flex overflow-x-auto pb-2 scrollbar-thin snap-x max-w-full min-w-0 sm:grid sm:grid-cols-4 md:grid-cols-7 gap-2">
             {(daily.length > 0 ? daily : [
               { date: new Date().toISOString(), condition: current.condition || 'Clear', icon: current.icon || 'wb_sunny', temperatureMax: current.temperature, temperatureMin: current.temperature ? current.temperature - 5 : 20 },
               { date: new Date(Date.now() + 86400000).toISOString(), condition: 'Clear', icon: 'wb_sunny', temperatureMax: 30, temperatureMin: 23 },
@@ -1292,8 +1292,8 @@ export default function LiveWeatherCard({ className = '' }) {
 
           {/* Hourly Forecast Strip */}
           {hourly.length > 0 && (
-            <div id="weather-hourly-strip" className="pt-1.5">
-              <div className="grid grid-cols-6 gap-1 text-center">
+            <div id="weather-hourly-strip" className="pt-1.5 overflow-x-auto max-w-full min-w-0 scrollbar-none">
+              <div className="grid grid-cols-6 gap-1 text-center min-w-[250px]">
                 {hourly.map((hour, idx) => {
                   const timeStr = hour.time ? new Date(hour.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : `+${idx + 1}h`;
                   return (
@@ -1456,11 +1456,11 @@ export default function LiveWeatherCard({ className = '' }) {
 
             return (
               <>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-sm text-secondary">security</span>
-                    <span className="text-xs font-bold text-primary tracking-wide uppercase">LOCAL WEATHER RISK</span>
-                    <span id="risk-level-badge" className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-mono text-[10px] font-bold border ${levelColor}`}>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
+                    <span className="material-symbols-outlined text-sm text-secondary shrink-0">security</span>
+                    <span className="text-xs font-bold text-primary tracking-wide uppercase shrink-0">LOCAL WEATHER RISK</span>
+                    <span id="risk-level-badge" className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-mono text-[10px] font-bold border shrink-0 ${levelColor}`}>
                       <span>{dotEmoji}</span>
                       <span>{displayLevel}</span>
                     </span>
@@ -1470,7 +1470,7 @@ export default function LiveWeatherCard({ className = '' }) {
                     id="btn-toggle-risk-why"
                     type="button"
                     onClick={() => setIsWhyExpanded((prev) => !prev)}
-                    className="text-[11px] font-bold text-secondary hover:underline flex items-center gap-1 cursor-pointer"
+                    className="text-[11px] font-bold text-secondary hover:underline flex items-center gap-1 cursor-pointer shrink-0 ml-auto"
                   >
                     <span>[ Why? ]</span>
                     <span className="material-symbols-outlined text-xs transition-transform" style={{ transform: isWhyExpanded ? 'rotate(180deg)' : 'none' }}>
@@ -1671,7 +1671,7 @@ export default function LiveWeatherCard({ className = '' }) {
               </span>
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {chatMessages.length > 0 && (
                 <button
                   type="button"
@@ -1712,7 +1712,7 @@ export default function LiveWeatherCard({ className = '' }) {
                 onClick={() => setSelectedLanguage('en')}
                 aria-pressed={selectedLanguage === 'en'}
                 aria-label="Switch conversation language to English"
-                className={`min-h-[38px] px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-colors ${
+                className={`min-h-[38px] px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-colors ${
                   selectedLanguage === 'en'
                     ? 'bg-secondary text-on-secondary shadow-xs'
                     : 'text-on-surface-variant hover:text-primary'
@@ -1727,7 +1727,7 @@ export default function LiveWeatherCard({ className = '' }) {
                 onClick={() => setSelectedLanguage('ta')}
                 aria-pressed={selectedLanguage === 'ta'}
                 aria-label="Switch conversation language to Tamil (தமிழ்)"
-                className={`min-h-[38px] px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-colors ${
+                className={`min-h-[38px] px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-colors ${
                   selectedLanguage === 'ta'
                     ? 'bg-secondary text-on-secondary shadow-xs'
                     : 'text-on-surface-variant hover:text-primary'
@@ -1742,7 +1742,7 @@ export default function LiveWeatherCard({ className = '' }) {
                 onClick={() => setSelectedLanguage('hi')}
                 aria-pressed={selectedLanguage === 'hi'}
                 aria-label="Switch conversation language to Hindi (हिन्दी)"
-                className={`min-h-[38px] px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-colors ${
+                className={`min-h-[38px] px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-colors ${
                   selectedLanguage === 'hi'
                     ? 'bg-secondary text-on-secondary shadow-xs'
                     : 'text-on-surface-variant hover:text-primary'

@@ -375,8 +375,8 @@ export default function CitizenSOSPage() {
 
       {/* CANCEL CONFIRMATION DIALOG */}
       {showCancelConfirm && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <Card className="bg-surface border border-outline-variant/60 max-w-sm w-full p-5 sm:p-6 space-y-4 shadow-2xl text-left animate-slide-up">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 animate-fade-in">
+          <Card className="bg-surface border border-outline-variant/60 max-w-sm w-full p-4 sm:p-6 space-y-4 shadow-2xl text-left animate-slide-up">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-error/10 border border-error/25 flex items-center justify-center text-error shrink-0 mt-0.5">
                 <span className="material-symbols-outlined text-xl">warning</span>

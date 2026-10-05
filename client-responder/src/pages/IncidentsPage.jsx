@@ -3,17 +3,135 @@ import { useLocation, Link } from 'react-router-dom';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import IncidentDetailModal from '../components/incidents/IncidentDetailModal';
-import { incidentApi } from '../services/api';
+import { incidentApi, invalidateApiCache } from '../services/api';
 import useSocket from '../hooks/useSocket';
 import { isIncidentActive } from '../utils/helpers';
 import { doIncidentsMatch } from '../utils/mapIncidentNormalizer';
+
+// Helper function to map raw incident document to IncidentsPage UI representation
+function transformIncidentDoc(doc) {
+  if (!doc) return null;
+  const mongoId = doc._id ? String(doc._id) : (doc.id ? String(doc.id) : (doc.packetId ? String(doc.packetId) : ''));
+  const actualId = mongoId || (doc.packetId ? String(doc.packetId) : 'Not Found');
+  const displayId = mongoId && mongoId.length >= 4 ? `INC-${mongoId.slice(-4).toUpperCase()}` : actualId;
+  const category = (doc.detectedEmergencyCategory || doc.category || doc.aiAssessment?.category || doc.aiAnalysis?.disasterCategory || doc.type || 'OTHER').toUpperCase();
+  const citizenSelectedCategory = (doc.citizenSelectedCategory || doc.selectedCategory || doc.citizenInput?.selectedCategory || null);
+  const categoryConflict = Boolean(
+    doc.categoryConflict ||
+    (citizenSelectedCategory &&
+      category &&
+      citizenSelectedCategory.toUpperCase() !== category.toUpperCase() &&
+      citizenSelectedCategory.toUpperCase() !== 'GENERAL' &&
+      citizenSelectedCategory.toUpperCase() !== 'OTHER')
+  );
+  const priority = (doc.severity || doc.priority || doc.aiAnalysis?.severity || 'MEDIUM').toUpperCase();
+
+  let priorityBadge = 'bg-secondary text-white';
+  if (priority === 'CRITICAL') priorityBadge = 'bg-error text-white';
+  else if (priority === 'HIGH' || priority === 'WARNING') priorityBadge = 'bg-amber-500 text-white';
+  else if (priority === 'LOW') priorityBadge = 'bg-surface-container-high text-primary';
+
+  const status = (doc.status || doc.packetStatus || 'OPEN').toUpperCase();
+  let statusBadge = 'bg-surface-container border-outline-variant text-on-surface-variant';
+  if (status === 'DISPATCHED') statusBadge = 'bg-warning/15 border-warning text-warning';
+  else if (status === 'EN_ROUTE') statusBadge = 'bg-secondary/15 border-secondary text-secondary';
+  else if (status === 'ON_SCENE') statusBadge = 'bg-error/15 border-error text-error font-bold';
+  else if (status === 'RESOLVED') statusBadge = 'bg-success/15 border-success text-success';
+
+  const docLat = doc.location?.lat ?? doc.location?.latitude ?? doc.latitude ?? doc.gpsCoordinates?.latitude ?? doc.gpsCoordinates?.lat ?? (Array.isArray(doc.location?.coordinates) ? doc.location.coordinates[1] : (Array.isArray(doc.coordinates) ? doc.coordinates[1] : null));
+  const docLng = doc.location?.lng ?? doc.location?.longitude ?? doc.longitude ?? doc.gpsCoordinates?.longitude ?? doc.gpsCoordinates?.lng ?? (Array.isArray(doc.location?.coordinates) ? doc.location.coordinates[0] : (Array.isArray(doc.coordinates) ? doc.coordinates[0] : null));
+  const hasGps = docLat != null && docLng != null && !isNaN(Number(docLat)) && !isNaN(Number(docLng)) && (Number(docLat) !== 0 || Number(docLng) !== 0);
+
+  let realLocation = doc.location?.address;
+  if (!realLocation || realLocation.startsWith('Sector')) {
+    if (hasGps) {
+      realLocation = `GPS: ${Number(docLat).toFixed(4)}, ${Number(docLng).toFixed(4)}`;
+    } else {
+      realLocation = doc.sector || doc.location?.address || 'Live Telemetry Location';
+    }
+  }
+  const citizenName = doc.victimName || doc.citizenName || doc.user?.name || doc.userId || 'Citizen User';
+  const assignedUnit = doc.assignedResponders?.[0]?.name || doc.assignedUnit || 'Unassigned / Pending Dispatch';
+  const createdAtRaw = doc.createdAt ? new Date(doc.createdAt).getTime() : (doc.timestamp ? new Date(doc.timestamp).getTime() : Date.now());
+
+  return {
+    ...(typeof doc === 'object' ? doc : {}),
+    id: actualId,
+    _id: actualId,
+    mongoId: actualId,
+    displayId,
+    packetId: doc.packetId ? String(doc.packetId) : actualId,
+    clientRequestId: doc.clientRequestId || doc.packetId || actualId,
+    citizenId: doc.citizenId || doc.userId || doc.packetId || 'usr_citizen_telemetry',
+    citizenName,
+    category,
+    detectedEmergencyCategory: category,
+    citizenSelectedCategory,
+    categoryConflict,
+    canonicalCategory: (() => {
+      const rawAiCat = doc.aiTriage?.classification || doc.detectedEmergencyCategory || doc.category || doc.aiAssessment?.category || doc.aiAnalysis?.disasterCategory || 'Other';
+      const c = String(rawAiCat).trim().toUpperCase();
+      if (c.includes('FLOOD') || c.includes('WATERLOGGING')) return 'Flood';
+      if (c.includes('FIRE')) return 'Fire';
+      if (c.includes('CYCLONE') || c.includes('STORM')) return 'Cyclone';
+      if (c.includes('LANDSLIDE') || c.includes('MUDSLIDE')) return 'Landslide';
+      if (c.includes('ROAD') || c.includes('BLOCKAGE')) return 'Road blockage';
+      if (c.includes('MEDIC') || c.includes('AMBULANCE')) return 'Medical emergency';
+      if (c.includes('BUILDING') || c.includes('COLLAPSE') || c.includes('INFRASTRUCTURE') || c.includes('BRIDGE')) return 'Infrastructure damage';
+      const map = {
+        'FLOOD': 'Flood', 'FIRE': 'Fire', 'CYCLONE': 'Cyclone', 'LANDSLIDE': 'Landslide',
+        'ROAD BLOCKAGE': 'Road blockage', 'MEDICAL EMERGENCY': 'Medical emergency', 'INFRASTRUCTURE DAMAGE': 'Infrastructure damage',
+      };
+      return map[c] || 'Other';
+    })(),
+    confidencePct: Math.round((doc.aiTriage?.confidenceScore ?? (typeof doc.confidence === 'number' ? doc.confidence : (typeof doc.aiAssessment?.confidence === 'number' ? doc.aiAssessment.confidence : 0.94))) * (doc.confidence > 1 ? 1 : 100)),
+    confidenceLevel: doc.aiTriage?.confidenceLevel || doc.classificationConfidence || 'HIGH',
+    aiTriage: doc.aiTriage || null,
+    originalCitizenEvidence: doc.originalCitizenEvidence || null,
+    extractedEntities: doc.extractedEntities || null,
+    aiSummary: doc.description || doc.title || doc.aiSummary || doc.aiAnalysis?.summary || 'Citizen Emergency SOS',
+    priority,
+    priorityBadge,
+    location: realLocation,
+    status,
+    statusBadge,
+    assignedUnit,
+    time: doc.createdAt ? new Date(doc.createdAt).toLocaleString() : new Date().toLocaleString(),
+    createdAtRaw,
+    completedAt: doc.completedAt ? new Date(doc.completedAt).toLocaleString() : (status === 'RESOLVED' || status === 'CLOSED' ? new Date(doc.updatedAt || Date.now()).toLocaleString() : 'N/A'),
+    completedBy: doc.completedBy || 'Command Officer',
+    resolutionSummary: doc.resolutionSummary || doc.completionNotes || 'Emergency resolved by response unit',
+    resolutionDuration: doc.createdAt && doc.completedAt ? `${Math.max(1, Math.round((new Date(doc.completedAt) - new Date(doc.createdAt)) / (1000 * 60)))} min` : 'N/A',
+    rawDoc: doc,
+  };
+}
 
 export default function IncidentsPage() {
   const location = useLocation();
   const hasAutoOpenedRef = useRef(false);
 
-  const [incidents, setIncidents] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [incidents, setIncidents] = useState(() => {
+    const cached = incidentApi.getCachedIncidents?.();
+    if (Array.isArray(cached) && cached.length > 0) {
+      const realIncidents = cached.map(transformIncidentDoc).filter(Boolean);
+      realIncidents.sort((a, b) => b.createdAtRaw - a.createdAtRaw);
+      const deduplicated = [];
+      const seenKeys = new Set();
+      for (const item of realIncidents) {
+        const key = String(item.rawDoc?.clientRequestId || item.packetId || item._id || item.id);
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          deduplicated.push(item);
+        }
+      }
+      return deduplicated;
+    }
+    return [];
+  });
+  const [isLoading, setIsLoading] = useState(() => {
+    const cached = incidentApi.getCachedIncidents?.();
+    return !(Array.isArray(cached) && cached.length > 0);
+  });
   const [fetchError, setFetchError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterPriority, setFilterPriority] = useState('ALL');
@@ -40,103 +158,7 @@ export default function IncidentsPage() {
   const fetchDebounceRef = useRef(null);
   const isFetchingIncidentsRef = useRef(false);
 
-  // Helper function to map raw incident document to IncidentsPage UI representation
-  const transformIncidentDoc = (doc) => {
-    if (!doc) return null;
-    const mongoId = doc._id ? String(doc._id) : (doc.id ? String(doc.id) : (doc.packetId ? String(doc.packetId) : ''));
-    const actualId = mongoId || (doc.packetId ? String(doc.packetId) : 'Not Found');
-    const displayId = mongoId && mongoId.length >= 4 ? `INC-${mongoId.slice(-4).toUpperCase()}` : actualId;
-    const category = (doc.detectedEmergencyCategory || doc.category || doc.aiAssessment?.category || doc.aiAnalysis?.disasterCategory || doc.type || 'OTHER').toUpperCase();
-    const citizenSelectedCategory = (doc.citizenSelectedCategory || doc.selectedCategory || doc.citizenInput?.selectedCategory || null);
-    const categoryConflict = Boolean(
-      doc.categoryConflict ||
-      (citizenSelectedCategory &&
-        category &&
-        citizenSelectedCategory.toUpperCase() !== category.toUpperCase() &&
-        citizenSelectedCategory.toUpperCase() !== 'GENERAL' &&
-        citizenSelectedCategory.toUpperCase() !== 'OTHER')
-    );
-    const priority = (doc.severity || doc.priority || doc.aiAnalysis?.severity || 'MEDIUM').toUpperCase();
 
-    let priorityBadge = 'bg-secondary text-white';
-    if (priority === 'CRITICAL') priorityBadge = 'bg-error text-white';
-    else if (priority === 'HIGH' || priority === 'WARNING') priorityBadge = 'bg-amber-500 text-white';
-    else if (priority === 'LOW') priorityBadge = 'bg-surface-container-high text-primary';
-
-    const status = (doc.status || doc.packetStatus || 'OPEN').toUpperCase();
-    let statusBadge = 'bg-surface-container border-outline-variant text-on-surface-variant';
-    if (status === 'DISPATCHED') statusBadge = 'bg-warning/15 border-warning text-warning';
-    else if (status === 'EN_ROUTE') statusBadge = 'bg-secondary/15 border-secondary text-secondary';
-    else if (status === 'ON_SCENE') statusBadge = 'bg-error/15 border-error text-error font-bold';
-    else if (status === 'RESOLVED') statusBadge = 'bg-success/15 border-success text-success';
-
-    const docLat = doc.location?.lat ?? doc.location?.latitude ?? doc.latitude ?? doc.gpsCoordinates?.latitude ?? doc.gpsCoordinates?.lat ?? (Array.isArray(doc.location?.coordinates) ? doc.location.coordinates[1] : (Array.isArray(doc.coordinates) ? doc.coordinates[1] : null));
-    const docLng = doc.location?.lng ?? doc.location?.longitude ?? doc.longitude ?? doc.gpsCoordinates?.longitude ?? doc.gpsCoordinates?.lng ?? (Array.isArray(doc.location?.coordinates) ? doc.location.coordinates[0] : (Array.isArray(doc.coordinates) ? doc.coordinates[0] : null));
-    const hasGps = docLat != null && docLng != null && !isNaN(Number(docLat)) && !isNaN(Number(docLng)) && (Number(docLat) !== 0 || Number(docLng) !== 0);
-
-    let realLocation = doc.location?.address;
-    if (!realLocation || realLocation.startsWith('Sector')) {
-      if (hasGps) {
-        realLocation = `GPS: ${Number(docLat).toFixed(4)}, ${Number(docLng).toFixed(4)}`;
-      } else {
-        realLocation = doc.sector || doc.location?.address || 'Live Telemetry Location';
-      }
-    }
-    const citizenName = doc.victimName || doc.citizenName || doc.user?.name || doc.userId || 'Citizen User';
-    const assignedUnit = doc.assignedResponders?.[0]?.name || doc.assignedUnit || 'Unassigned / Pending Dispatch';
-    const createdAtRaw = doc.createdAt ? new Date(doc.createdAt).getTime() : (doc.timestamp ? new Date(doc.timestamp).getTime() : Date.now());
-
-    return {
-      ...(typeof doc === 'object' ? doc : {}),
-      id: actualId,
-      _id: actualId,
-      mongoId: actualId,
-      displayId,
-      packetId: doc.packetId ? String(doc.packetId) : actualId,
-      clientRequestId: doc.clientRequestId || doc.packetId || actualId,
-      citizenId: doc.citizenId || doc.userId || doc.packetId || 'usr_citizen_telemetry',
-      citizenName,
-      category,
-      detectedEmergencyCategory: category,
-      citizenSelectedCategory,
-      categoryConflict,
-      canonicalCategory: (() => {
-        const rawAiCat = doc.aiTriage?.classification || doc.detectedEmergencyCategory || doc.category || doc.aiAssessment?.category || doc.aiAnalysis?.disasterCategory || 'Other';
-        const c = String(rawAiCat).trim().toUpperCase();
-        if (c.includes('FLOOD') || c.includes('WATERLOGGING')) return 'Flood';
-        if (c.includes('FIRE')) return 'Fire';
-        if (c.includes('CYCLONE') || c.includes('STORM')) return 'Cyclone';
-        if (c.includes('LANDSLIDE') || c.includes('MUDSLIDE')) return 'Landslide';
-        if (c.includes('ROAD') || c.includes('BLOCKAGE')) return 'Road blockage';
-        if (c.includes('MEDIC') || c.includes('AMBULANCE')) return 'Medical emergency';
-        if (c.includes('BUILDING') || c.includes('COLLAPSE') || c.includes('INFRASTRUCTURE') || c.includes('BRIDGE')) return 'Infrastructure damage';
-        const map = {
-          'FLOOD': 'Flood', 'FIRE': 'Fire', 'CYCLONE': 'Cyclone', 'LANDSLIDE': 'Landslide',
-          'ROAD BLOCKAGE': 'Road blockage', 'MEDICAL EMERGENCY': 'Medical emergency', 'INFRASTRUCTURE DAMAGE': 'Infrastructure damage',
-        };
-        return map[c] || 'Other';
-      })(),
-      confidencePct: Math.round((doc.aiTriage?.confidenceScore ?? (typeof doc.confidence === 'number' ? doc.confidence : (typeof doc.aiAssessment?.confidence === 'number' ? doc.aiAssessment.confidence : 0.94))) * (doc.confidence > 1 ? 1 : 100)),
-      confidenceLevel: doc.aiTriage?.confidenceLevel || doc.classificationConfidence || 'HIGH',
-      aiTriage: doc.aiTriage || null,
-      originalCitizenEvidence: doc.originalCitizenEvidence || null,
-      extractedEntities: doc.extractedEntities || null,
-      aiSummary: doc.description || doc.title || doc.aiSummary || doc.aiAnalysis?.summary || 'Citizen Emergency SOS',
-      priority,
-      priorityBadge,
-      location: realLocation,
-      status,
-      statusBadge,
-      assignedUnit,
-      time: doc.createdAt ? new Date(doc.createdAt).toLocaleString() : new Date().toLocaleString(),
-      createdAtRaw,
-      completedAt: doc.completedAt ? new Date(doc.completedAt).toLocaleString() : (status === 'RESOLVED' || status === 'CLOSED' ? new Date(doc.updatedAt || Date.now()).toLocaleString() : 'N/A'),
-      completedBy: doc.completedBy || 'Command Officer',
-      resolutionSummary: doc.resolutionSummary || doc.completionNotes || 'Emergency resolved by response unit',
-      resolutionDuration: doc.createdAt && doc.completedAt ? `${Math.max(1, Math.round((new Date(doc.completedAt) - new Date(doc.createdAt)) / (1000 * 60)))} min` : 'N/A',
-      rawDoc: doc,
-    };
-  };
 
   // Real-Time Socket.IO event listener for INSTANT updates (0ms) without page refresh or heavy re-GET
   useEffect(() => {
@@ -150,6 +172,7 @@ export default function IncidentsPage() {
     }
 
     if (lastSocketEvent.type === 'INCIDENT_DELETED' || lastSocketEvent.type === 'incident:deleted') {
+      invalidateApiCache('/incidents');
       const delId = lastSocketEvent.incidentId || lastSocketEvent.id;
       if (delId) {
         setIncidents((prev) => prev.filter((item) => item.id !== delId && item._id !== delId && item.packetId !== delId));
@@ -159,6 +182,7 @@ export default function IncidentsPage() {
 
     // INSTANT (0ms) Real-Time Ingestion for New Incidents & Emergency Alerts
     if (lastSocketEvent.type === 'INCIDENT_CREATED' || lastSocketEvent.type === 'NEW_EMERGENCY') {
+      invalidateApiCache('/incidents');
       console.log(`[SOCKET_RECEIVED] type=${lastSocketEvent.type} timestamp=${new Date().toISOString()}`);
       const doc = lastSocketEvent.incident || lastSocketEvent.emergency || lastSocketEvent;
       if (doc) {
@@ -183,6 +207,7 @@ export default function IncidentsPage() {
 
     // INSTANT (0ms) Real-Time Status / Detail Updates
     if (lastSocketEvent.type === 'INCIDENT_UPDATED') {
+      invalidateApiCache('/incidents');
       const doc = lastSocketEvent.incident || lastSocketEvent;
       if (doc) {
         const transformed = transformIncidentDoc(doc);
@@ -294,7 +319,7 @@ export default function IncidentsPage() {
     if (isFetchingIncidentsRef.current) return;
     isFetchingIncidentsRef.current = true;
     const fetchStart = performance.now();
-    if (!isBackgroundPoll) {
+    if (!isBackgroundPoll && incidents.length === 0) {
       setIsLoading(true);
       setFetchError(null);
       console.log(`[INCIDENT_GET_START] timestamp=${new Date().toISOString()}`);

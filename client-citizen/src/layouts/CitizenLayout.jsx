@@ -15,7 +15,7 @@ export default function CitizenLayout() {
     <div className="min-h-screen bg-background flex flex-col justify-between">
       {/* Top Citizen Header */}
       <header className="sticky top-0 w-full bg-surface/95 backdrop-blur-md border-b border-outline-variant/60 z-30">
-        <div className="max-w-md sm:max-w-lg mx-auto flex items-center justify-between px-4 py-3">
+        <div className="max-w-md sm:max-w-lg mx-auto flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3">
           {/* Logo / Title */}
           <button
             onClick={() => navigate(ROUTES.CITIZEN_HOME)}
@@ -59,17 +59,17 @@ export default function CitizenLayout() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 w-full max-w-md sm:max-w-lg mx-auto p-3 sm:p-4 animate-fade-in">
+      <main className="flex-1 w-full max-w-md sm:max-w-lg mx-auto p-2.5 sm:p-4 animate-fade-in overflow-x-hidden">
         <Outlet />
       </main>
 
       {/* Footer Shortcut Bar */}
-      <footer className="sticky bottom-0 w-full bg-surface/95 backdrop-blur-md border-t border-outline-variant/60 py-2 sm:py-2.5 px-2 sm:px-3 z-20 pb-safe">
+      <footer className="sticky bottom-0 w-full bg-surface/95 backdrop-blur-md border-t border-outline-variant/60 py-1.5 sm:py-2.5 px-1 sm:px-3 z-20 pb-safe">
         <div className="max-w-md sm:max-w-lg mx-auto flex justify-between items-center text-xs">
           <NavLink
             to={ROUTES.CITIZEN_HOME}
             className={({ isActive }) =>
-              `flex items-center gap-1 font-bold px-2 sm:px-3 py-1.5 sm:py-2 min-h-[44px] rounded-xl transition-colors cursor-pointer ${
+              `flex items-center gap-0.5 sm:gap-1 font-bold px-1.5 sm:px-3 py-1.5 sm:py-2 min-h-[44px] rounded-xl text-[11px] sm:text-xs transition-colors cursor-pointer ${
                 isActive ? 'bg-secondary text-white shadow-xs' : 'text-on-surface-variant hover:text-primary'
               }`
             }
@@ -81,7 +81,7 @@ export default function CitizenLayout() {
           <NavLink
             to={ROUTES.CITIZEN_SOS}
             className={({ isActive }) =>
-              `flex items-center gap-1 font-bold px-2 sm:px-3 py-1.5 sm:py-2 min-h-[44px] rounded-xl transition-colors cursor-pointer ${
+              `flex items-center gap-0.5 sm:gap-1 font-bold px-1.5 sm:px-3 py-1.5 sm:py-2 min-h-[44px] rounded-xl text-[11px] sm:text-xs transition-colors cursor-pointer ${
                 isActive ? 'bg-error text-white shadow-xs shadow-error/30' : 'text-error font-extrabold hover:bg-error/10'
               }`
             }
@@ -93,7 +93,7 @@ export default function CitizenLayout() {
           <NavLink
             to={ROUTES.CITIZEN_STATUS}
             className={({ isActive }) =>
-              `flex items-center gap-1 font-bold px-2 sm:px-3 py-1.5 sm:py-2 min-h-[44px] rounded-xl transition-colors cursor-pointer ${
+              `flex items-center gap-0.5 sm:gap-1 font-bold px-1.5 sm:px-3 py-1.5 sm:py-2 min-h-[44px] rounded-xl text-[11px] sm:text-xs transition-colors cursor-pointer ${
                 isActive ? 'bg-secondary text-white shadow-xs' : 'text-on-surface-variant hover:text-primary'
               }`
             }
@@ -105,7 +105,7 @@ export default function CitizenLayout() {
           <NavLink
             to={ROUTES.CITIZEN_PROFILE}
             className={({ isActive }) =>
-              `flex items-center gap-1 font-bold px-2 sm:px-3 py-1.5 sm:py-2 min-h-[44px] rounded-xl transition-colors cursor-pointer ${
+              `flex items-center gap-0.5 sm:gap-1 font-bold px-1.5 sm:px-3 py-1.5 sm:py-2 min-h-[44px] rounded-xl text-[11px] sm:text-xs transition-colors cursor-pointer ${
                 isActive ? 'bg-secondary text-white shadow-xs' : 'text-on-surface-variant hover:text-primary'
               }`
             }
@@ -117,7 +117,7 @@ export default function CitizenLayout() {
           <NavLink
             to={ROUTES.CITIZEN_SETTINGS}
             className={({ isActive }) =>
-              `flex items-center gap-1 font-bold px-2 sm:px-3 py-1.5 sm:py-2 min-h-[44px] rounded-xl transition-colors cursor-pointer ${
+              `flex items-center gap-0.5 sm:gap-1 font-bold px-1.5 sm:px-3 py-1.5 sm:py-2 min-h-[44px] rounded-xl text-[11px] sm:text-xs transition-colors cursor-pointer ${
                 isActive ? 'bg-secondary text-white shadow-xs' : 'text-on-surface-variant hover:text-primary'
               }`
             }

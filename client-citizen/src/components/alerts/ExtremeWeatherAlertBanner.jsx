@@ -318,7 +318,7 @@ export default function ExtremeWeatherAlertBanner({ userCoordinates = null, clas
         >
           {/* Header Row */}
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className={`material-symbols-outlined text-2xl ${topAlert.severity === 'EXTREME' ? 'animate-bounce' : ''}`} aria-hidden="true">
                 {style.icon}
               </span>
@@ -371,7 +371,7 @@ export default function ExtremeWeatherAlertBanner({ userCoordinates = null, clas
               )}
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
               {notificationPermission === 'default' && (
                 <button
                   type="button"
